@@ -15,8 +15,8 @@ let xscale = d3.scaleLinear().range([0, WIDTH]);
 let yscale = d3.scaleLinear().range([HEIGHT, 0]);
 
 let line = d3.line()
-    .x((d) => xscale(d[0]))
-    .y((d) => yscale(d[1]));
+    .x((d) => xscale(d.x))
+    .y((d) => yscale(d.y));
 
 xscale.domain([XMIN, XMAX]);
 yscale.domain([0, 0]);
@@ -30,7 +30,7 @@ let yaxis = svg.append("g")
 
 
 function update(data) {
-    yscale.domain(d3.extent(data, (d) => d[1]));
+    yscale.domain(d3.extent(data, (d) => d.y));
     yaxis.call(d3.axisLeft(yscale));
 
     svg.selectAll(".line").remove();
@@ -42,12 +42,11 @@ function update(data) {
 
 
 async function main() {
-    let DATA = [];
+    let data = [];
     for (x = XMIN; x <= XMAX; x += 0.01) {
         await new Promise(r => setTimeout(r, 10));
-        let y = 1 - Math.cos(x);
-        DATA.push([x, y]);
-        update(DATA);
+        data.push({"x": x, "y": 1 - Math.cos(x)});
+        update(data);
     }
 }
 
