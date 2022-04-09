@@ -35,7 +35,7 @@ function update(data) {
 
     svg.selectAll(".line").remove();
     svg.append("path")
-        .data([data])
+        .datum(data)
         .attr("class", "line")
         .attr("d", line);
 }
