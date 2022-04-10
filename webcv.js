@@ -1,9 +1,9 @@
-const MARGIN = 50;
+const MARGIN = 80;
 const WIDTH = 960 - 2 * MARGIN;
 const HEIGHT = 480 - 2 * MARGIN;
 
-const EMIN = 0.0;
-const EMAX = 10.0;
+const Ei = -0.3;
+const Ef = +0.3;
 
 let svg = d3.select("body").append("svg")
     .attr("width", WIDTH + 2 * MARGIN)
@@ -18,7 +18,7 @@ let line = d3.line()
     .x(d => xscale(d.E))
     .y(d => yscale(d.I));
 
-xscale.domain([EMIN, EMAX]);
+xscale.domain([Ei, Ef]);
 yscale.domain([0, 0]);
 
 let xaxis = svg.append("g")
@@ -71,10 +71,22 @@ async function main() {
         SHARED_MEMORY_BYTES,
     );
 
-    const heap_base = __heap_base.value + SHARED_MEMORY_BYTES;
-    const heap_size = memory.buffer.byteLength - heap_base;
-
-    const ctx = webcv_init(heap_base, heap_size, EMIN, EMAX);
+    const ctx = webcv_init(
+        __heap_base.value + SHARED_MEMORY_BYTES, // Start of private heap
+        0.0,  // E0 [V]
+        1.0,  // k0 [cm s-1]
+        0.5,  // alpha [-]
+        Ei,   // Ei [V]
+        Ef,   // Ef [V]
+        0.1,  // re [cm]
+        0.1,  // scanrate [V s-1]
+        1.0,  // conc [mM]
+        1e-5, // DA [cm2 s-1]
+        1e-5, // DB [cm2 s-1]
+        1.0,  // t_density [-]
+        1e-5, // h0 [-]
+        1.1,  // gamma [-]
+    );
 
     let data = [];
     let more = true;
