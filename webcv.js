@@ -46,6 +46,8 @@ async function get_wasm_instance(wasm, memory) {
         fetch(wasm), {
             env: {
                 memory: memory,
+                exp: Math.exp,
+                sqrt: Math.sqrt,
                 debug_i: arg => console.log(`wasm:int:${arg}`),
                 debug_f: arg => console.log(`wasm:flt:${arg}`),
                 debug_p: arg => console.log(`wasm:ptr:${arg}`),

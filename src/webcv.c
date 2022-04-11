@@ -1,8 +1,14 @@
 #include <stddef.h>
 
+// No stdlib, so imported from JS.
+double exp(double x);
+double sqrt(double x);
+
+// Debug util functions from JS.
 void debug_i(size_t i);
 void debug_f(double f);
 void debug_p(void *p);
+
 
 const double PI = 3.14159265359;
 const double F = 96485.33212;
@@ -35,19 +41,26 @@ typedef struct {
 } Conversion;
 
 typedef struct {
-    double *E;
     size_t  steps;
     double  dt;
-    double  tmax;
+    double *E;
+    double *kA;
+    double *kB;
 } Time;
+
+typedef struct {
+    size_t  steps;
+    double *R;
+} Space;
 
 typedef struct {
     Heap        heap;
     Parameters  params;
     Conversion  conversion;
     Time        time;
+    Space       space;
     size_t      index;
-} Context;
+} Simulation;
 
 
 static inline void *
@@ -61,16 +74,15 @@ get_next_aligned(void *p)
 
 
 static void
-populate_time(Time *time, Heap *heap, const Parameters *params)
+init_time(Time *time, Heap *heap, const Parameters *params)
 {
     double dE;
     size_t count;
 
     dE = 1 / params->t_density;
 
-    // "Allocate" memory on the heap
+    // Calculate potential ramp
     time->E = heap->next;
-
     time->E[0] = params->Ei;
     count = 1;
     while (time->E[count - 1] < params->Ef) {
@@ -81,16 +93,52 @@ populate_time(Time *time, Heap *heap, const Parameters *params)
         time->E[count] = time->E[count - 1] - dE;
         ++count;
     }
-
-    // Update the heap pointer
     heap->next = get_next_aligned(time->E + count);
+
+    // Calculate rate constants
+    time->kA = heap->next;
+    heap->next = get_next_aligned(time->kA + count);
+    time->kB = heap->next;
+    heap->next = get_next_aligned(time->kB + count);
+    for (size_t i = 0; i < count; i++) {
+        time->kA[i] = params->K0 * exp((1 - params->alpha) * time->E[i]);
+        time->kB[i] = params->K0 * exp(-params->alpha * time->E[i]);
+    }
 
     time->steps = count;
     time->dt = dE / params->sigma;
 }
 
 
-Context *
+static void
+init_space(Space *space, Heap *heap, const Parameters *params, const Time *time)
+{
+    double dR;
+    double limit;
+    size_t count;
+
+    dR = params->h0;
+    limit = 1 + 6 * sqrt(time->dt * time->steps);
+
+    // "Allocate" memory on the heap
+    space->R = heap->next;
+
+    space->R[0] = 1;
+    count = 1;
+    while (space->R[count - 1] < limit) {
+        space->R[count] = space->R[count - 1] + dR;
+        dR *= params->gamma;
+        ++count;
+    }
+
+    // Update the heap pointer
+    heap->next = get_next_aligned(space->R + count);
+
+    space->steps = count;
+}
+
+
+Simulation *
 webcv_init(
     void *heap_base,
     double E0,
@@ -107,41 +155,42 @@ webcv_init(
     double h0,
     double gamma)
 {
-    Context *context = heap_base;
+    Simulation *sim = heap_base;
 
-    // Begin heap after the context structure
-    context->heap.next = get_next_aligned(context + 1);
+    // Begin heap after the sim structure
+    sim->heap.next = get_next_aligned(sim + 1);
 
     // Convert to dimensionless parameters
-    context->params.K0 = k0 * (re / DA);
-    context->params.alpha = alpha;
-    context->params.Ei = F_RT * (Ei - E0);
-    context->params.Ef = F_RT * (Ef - E0);
-    context->params.sigma = scanrate * F_RT * ((re * re) / DA);
-    context->params.DA_DB = DA / DB;
-    context->params.t_density = t_density;
-    context->params.h0 = h0;
-    context->params.gamma = gamma;
+    sim->params.K0 = k0 * (re / DA);
+    sim->params.alpha = alpha;
+    sim->params.Ei = F_RT * (Ei - E0);
+    sim->params.Ef = F_RT * (Ef - E0);
+    sim->params.sigma = scanrate * F_RT * ((re * re) / DA);
+    sim->params.DA_DB = DA / DB;
+    sim->params.t_density = t_density;
+    sim->params.h0 = h0;
+    sim->params.gamma = gamma;
 
     // Store values to convert outputs back again
-    context->conversion.E0 = E0;
-    context->conversion.Ifactor = 2 * PI * F * DA * re * conc * 1e-6;
+    sim->conversion.E0 = E0;
+    sim->conversion.Ifactor = 2 * PI * F * DA * re * conc * 1e-6;
 
-    populate_time(&context->time, &context->heap, &context->params);
+    init_time(&sim->time, &sim->heap, &sim->params);
+    init_space(&sim->space, &sim->heap, &sim->params, &sim->time);
 
-    context->index = 0;
-    return context;
+    sim->index = 0;
+    return sim;
 }
 
 int
-webcv_next(Context *context, double *Eout, double *Iout)
+webcv_next(Simulation *sim, double *Eout, double *Iout)
 {
-    double E = context->time.E[context->index];
-    double I = context->index;
+    double E = sim->time.E[sim->index];
+    double I = sim->time.kB[sim->index];
 
-    *Eout = (E * RT_F) + context->conversion.E0;
-    *Iout = I * context->conversion.Ifactor;
+    *Eout = (E * RT_F) + sim->conversion.E0;
+    *Iout = I * sim->conversion.Ifactor;
 
-    context->index += 1;
-    return context->index < context->time.steps;
+    sim->index += 1;
+    return sim->index < sim->time.steps;
 }
