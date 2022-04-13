@@ -54,11 +54,19 @@ typedef struct {
 } Space;
 
 typedef struct {
+    double *a;
+    double *b;
+    double *c;
+    double *x;
+} Equations;
+
+typedef struct {
     Heap        heap;
     Parameters  params;
     Conversion  conversion;
     Time        time;
     Space       space;
+    Equations   equations;
     size_t      index;
 } Simulation;
 
@@ -68,8 +76,8 @@ get_next_aligned(void *p)
 {
     // Aligns to next 8-byte boundary
     size_t addr = (size_t)p;
-    size_t next = (addr | 0x07) & ~0x07;
-    return (void *)addr;
+    size_t next = (addr + 0x07) & ~0x07;
+    return (void *)next;
 }
 
 
@@ -79,7 +87,7 @@ init_time(Time *time, Heap *heap, const Parameters *params)
     double dE;
     size_t count;
 
-    dE = 1 / params->t_density;
+    dE = 1.0 / params->t_density;
 
     // Calculate potential ramp
     time->E = heap->next;
@@ -120,9 +128,8 @@ init_space(Space *space, Heap *heap, const Parameters *params, const Time *time)
     dR = params->h0;
     limit = 1 + 6 * sqrt(time->dt * time->steps);
 
-    // "Allocate" memory on the heap
+    // Calculate expanding grid
     space->R = heap->next;
-
     space->R[0] = 1;
     count = 1;
     while (space->R[count - 1] < limit) {
@@ -130,11 +137,53 @@ init_space(Space *space, Heap *heap, const Parameters *params, const Time *time)
         dR *= params->gamma;
         ++count;
     }
-
-    // Update the heap pointer
     heap->next = get_next_aligned(space->R + count);
 
     space->steps = count;
+}
+
+
+static void
+init_equations(Equations *equations, Heap *heap, const Space *space)
+{
+    equations->a = heap->next;
+    heap->next = get_next_aligned(equations->a + space->steps);
+
+    equations->b = heap->next;
+    heap->next = get_next_aligned(equations->b + space->steps);
+
+    equations->c = heap->next;
+    heap->next = get_next_aligned(equations->c + space->steps);
+
+    equations->x = heap->next;
+    heap->next = get_next_aligned(equations->x + space->steps);
+}
+
+
+static void
+solve_tridiagonal(
+    size_t length,
+    const double *a,
+    const double *b,
+    const double *c,
+    double *x,
+    double *cprime)
+{
+    // Adapted from:
+    // https://en.wikibooks.org/wiki/Algorithm_Implementation/Linear_Algebra/Tridiagonal_matrix_algorithm
+    cprime[0] = c[0] / b[0];
+    x[0] = x[0] / b[0];
+
+    for (size_t i = 1; i < length; i++) {
+        double m = 1.0 / (b[i] - a[i] * cprime[i - 1]);
+        cprime[i] = c[i] * m;
+        x[i] = (x[i] - a[i] * x[i - 1]) * m;
+    }
+
+    for (size_t i = length - 1; i-- > 0; ) {
+        x[i] -= cprime[i] * x[i + 1];
+    }
+    x[0] -= cprime[0] * x[1];
 }
 
 
@@ -177,6 +226,7 @@ webcv_init(
 
     init_time(&sim->time, &sim->heap, &sim->params);
     init_space(&sim->space, &sim->heap, &sim->params, &sim->time);
+    init_equations(&sim->equations, &sim->heap, &sim->space);
 
     sim->index = 0;
     return sim;
