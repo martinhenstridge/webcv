@@ -29,7 +29,7 @@ typedef struct {
     double Ei;
     double Ef;
     double sigma;
-    double DA_DB;
+    double DB;
     double t_density;
     double h0;
     double gamma;
@@ -230,7 +230,7 @@ webcv_init(
     sim->params.Ei = F_RT * (Ei - E0);
     sim->params.Ef = F_RT * (Ef - E0);
     sim->params.sigma = scanrate * F_RT * ((re * re) / DA);
-    sim->params.DA_DB = DA / DB;
+    sim->params.DB = DB / DA;
     sim->params.t_density = t_density;
     sim->params.h0 = h0;
     sim->params.gamma = gamma;
