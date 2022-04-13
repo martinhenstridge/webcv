@@ -55,10 +55,10 @@ typedef struct {
 
 typedef struct {
     size_t  length;
-    double *a;
-    double *b;
-    double *c;
-    double *x;
+    double *Ma;
+    double *Mb;
+    double *Mc;
+    double *C;
 } Equations;
 
 typedef struct {
@@ -147,33 +147,45 @@ init_space(Space *space, Heap *heap, const Parameters *params, const Time *time)
 static void
 init_equations(Equations *equations, Heap *heap, const Space *space)
 {
-    equations->a = heap->next;
-    heap->next = get_next_aligned(equations->a + space->length);
-
-    equations->b = heap->next;
-    heap->next = get_next_aligned(equations->b + space->length);
-
-    equations->c = heap->next;
-    heap->next = get_next_aligned(equations->c + space->length);
-
-    equations->x = heap->next;
-    heap->next = get_next_aligned(equations->x + space->length);
-
     equations->length = space->length;
+
+    equations->Ma = heap->next;
+    heap->next = get_next_aligned(equations->Ma + equations->length);
+    equations->Mb = heap->next;
+    heap->next = get_next_aligned(equations->Mb + equations->length);
+    equations->Mc = heap->next;
+    heap->next = get_next_aligned(equations->Mc + equations->length);
+    equations->C = heap->next;
+    heap->next = get_next_aligned(equations->C + equations->length);
+
+    // Placeholder values...
+    for (size_t i = 0; i < equations->length; i++) {
+        equations->Ma[i] = 1;
+        equations->Mb[i] = 10;
+        equations->Mc[i] = 1;
+        equations->C[i] = 1;
+    }
 }
 
 
 static void
-solve_tridiagonal(
-    size_t length,
-    const double *a,
-    const double *b,
-    const double *c,
-    double *x,
-    double *cprime)
+update_equations(Equations *equations)
+{
+}
+
+
+static void
+solve_equations(const Equations *equations, Heap *heap)
 {
     // Adapted from:
     // https://en.wikibooks.org/wiki/Algorithm_Implementation/Linear_Algebra/Tridiagonal_matrix_algorithm
+    size_t length = equations->length;
+    double *a = equations->Ma;
+    double *b = equations->Mb;
+    double *c = equations->Mc;
+    double *x = equations->C;
+    double *cprime = heap->next;
+
     cprime[0] = c[0] / b[0];
     x[0] = x[0] / b[0];
 
@@ -238,8 +250,15 @@ webcv_init(
 int
 webcv_next(Simulation *sim, double *Eout, double *Iout)
 {
-    double E = sim->time.E[sim->index];
-    double I = sim->time.kB[sim->index];
+    double E;
+    double I;
+
+    E = sim->time.E[sim->index];
+
+    update_equations(&sim->equations);
+    solve_equations(&sim->equations, &sim->heap);
+
+    I = (sim->equations.C[1] - sim->equations.C[0]) / sim->params.h0;
 
     *Eout = (E * RT_F) + sim->conversion.E0;
     *Iout = I * sim->conversion.Ifactor;
