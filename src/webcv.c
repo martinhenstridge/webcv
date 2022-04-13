@@ -41,7 +41,7 @@ typedef struct {
 } Conversion;
 
 typedef struct {
-    size_t  steps;
+    size_t  length;
     double  dt;
     double *E;
     double *kA;
@@ -49,11 +49,12 @@ typedef struct {
 } Time;
 
 typedef struct {
-    size_t  steps;
+    size_t  length;
     double *R;
 } Space;
 
 typedef struct {
+    size_t  length;
     double *a;
     double *b;
     double *c;
@@ -85,35 +86,35 @@ static void
 init_time(Time *time, Heap *heap, const Parameters *params)
 {
     double dE;
-    size_t count;
+    size_t length;
 
     dE = 1.0 / params->t_density;
 
     // Calculate potential ramp
     time->E = heap->next;
     time->E[0] = params->Ei;
-    count = 1;
-    while (time->E[count - 1] < params->Ef) {
-        time->E[count] = time->E[count - 1] + dE;
-        ++count;
+    length = 1;
+    while (time->E[length - 1] < params->Ef) {
+        time->E[length] = time->E[length - 1] + dE;
+        ++length;
     }
-    while (time->E[count - 1] > params->Ei) {
-        time->E[count] = time->E[count - 1] - dE;
-        ++count;
+    while (time->E[length - 1] > params->Ei) {
+        time->E[length] = time->E[length - 1] - dE;
+        ++length;
     }
-    heap->next = get_next_aligned(time->E + count);
+    heap->next = get_next_aligned(time->E + length);
 
     // Calculate rate constants
     time->kA = heap->next;
-    heap->next = get_next_aligned(time->kA + count);
+    heap->next = get_next_aligned(time->kA + length);
     time->kB = heap->next;
-    heap->next = get_next_aligned(time->kB + count);
-    for (size_t i = 0; i < count; i++) {
+    heap->next = get_next_aligned(time->kB + length);
+    for (size_t i = 0; i < length; i++) {
         time->kA[i] = params->K0 * exp((1 - params->alpha) * time->E[i]);
         time->kB[i] = params->K0 * exp(-params->alpha * time->E[i]);
     }
 
-    time->steps = count;
+    time->length = length;
     time->dt = dE / params->sigma;
 }
 
@@ -123,23 +124,23 @@ init_space(Space *space, Heap *heap, const Parameters *params, const Time *time)
 {
     double dR;
     double limit;
-    size_t count;
+    size_t length;
 
     dR = params->h0;
-    limit = 1 + 6 * sqrt(time->dt * time->steps);
+    limit = 1 + 6 * sqrt(time->dt * time->length);
 
     // Calculate expanding grid
     space->R = heap->next;
     space->R[0] = 1;
-    count = 1;
-    while (space->R[count - 1] < limit) {
-        space->R[count] = space->R[count - 1] + dR;
+    length = 1;
+    while (space->R[length - 1] < limit) {
+        space->R[length] = space->R[length - 1] + dR;
         dR *= params->gamma;
-        ++count;
+        ++length;
     }
-    heap->next = get_next_aligned(space->R + count);
+    heap->next = get_next_aligned(space->R + length);
 
-    space->steps = count;
+    space->length = length;
 }
 
 
@@ -147,16 +148,18 @@ static void
 init_equations(Equations *equations, Heap *heap, const Space *space)
 {
     equations->a = heap->next;
-    heap->next = get_next_aligned(equations->a + space->steps);
+    heap->next = get_next_aligned(equations->a + space->length);
 
     equations->b = heap->next;
-    heap->next = get_next_aligned(equations->b + space->steps);
+    heap->next = get_next_aligned(equations->b + space->length);
 
     equations->c = heap->next;
-    heap->next = get_next_aligned(equations->c + space->steps);
+    heap->next = get_next_aligned(equations->c + space->length);
 
     equations->x = heap->next;
-    heap->next = get_next_aligned(equations->x + space->steps);
+    heap->next = get_next_aligned(equations->x + space->length);
+
+    equations->length = space->length;
 }
 
 
@@ -242,5 +245,5 @@ webcv_next(Simulation *sim, double *Eout, double *Iout)
     *Iout = I * sim->conversion.Ifactor;
 
     sim->index += 1;
-    return sim->index < sim->time.steps;
+    return sim->index < sim->time.length;
 }
