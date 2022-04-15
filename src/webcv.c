@@ -29,7 +29,6 @@ typedef struct {
     double Ei;
     double Ef;
     double sigma;
-    double DB;
     double t_density;
     double h0;
     double gamma;
@@ -213,8 +212,7 @@ webcv_init(
     double re,
     double scanrate,
     double conc,
-    double DA,
-    double DB,
+    double D,
     double t_density,
     double h0,
     double gamma)
@@ -225,19 +223,18 @@ webcv_init(
     sim->heap.next = get_next_aligned(sim + 1);
 
     // Convert to dimensionless parameters
-    sim->params.K0 = k0 * (re / DA);
+    sim->params.K0 = k0 * (re / D);
     sim->params.alpha = alpha;
     sim->params.Ei = F_RT * (Ei - E0);
     sim->params.Ef = F_RT * (Ef - E0);
-    sim->params.sigma = scanrate * F_RT * ((re * re) / DA);
-    sim->params.DB = DB / DA;
+    sim->params.sigma = scanrate * F_RT * ((re * re) / D);
     sim->params.t_density = t_density;
     sim->params.h0 = h0;
     sim->params.gamma = gamma;
 
     // Store values to convert outputs back again
     sim->conversion.E0 = E0;
-    sim->conversion.Ifactor = 2 * PI * F * DA * re * conc * 1e-6;
+    sim->conversion.Ifactor = 2 * PI * F * D * re * conc * 1e-6;
 
     init_time(&sim->time, &sim->heap, &sim->params);
     init_space(&sim->space, &sim->heap, &sim->params, &sim->time);
