@@ -130,7 +130,7 @@ init_space(Space *space, Heap *heap, const Parameters *params, const Time *time)
 
     // Calculate expanding grid
     space->R = heap->next;
-    space->R[0] = 1;
+    space->R[0] = 1.0;
     length = 1;
     while (space->R[length - 1] < limit) {
         space->R[length] = space->R[length - 1] + dR;
@@ -144,7 +144,7 @@ init_space(Space *space, Heap *heap, const Parameters *params, const Time *time)
 
 
 static void
-init_equations(Equations *equations, Heap *heap, const Space *space)
+init_equations(Equations *equations, Heap *heap, const Space *space, const Time *time)
 {
     equations->length = space->length;
 
@@ -157,13 +157,46 @@ init_equations(Equations *equations, Heap *heap, const Space *space)
     equations->C = heap->next;
     heap->next = get_next_aligned(equations->C + equations->length);
 
-    // Placeholder values...
-    for (size_t i = 0; i < equations->length; i++) {
-        equations->Ma[i] = 1;
-        equations->Mb[i] = 10;
-        equations->Mc[i] = 1;
-        equations->C[i] = 1;
+    double dt = time->dt;
+    double *R = space->R;
+
+    // Bulk concentration everywhere
+    for (size_t i = 0; i < space->length; i++) {
+        equations->C[i] = 1.0;
     }
+    debug_f(equations->C[0]);
+    debug_f(equations->C[1]);
+
+    // We're solving the following equation:
+    //
+    // dC   d2C
+    // -- = ---
+    // dt   dR2
+    //
+    // Each can be approximated using the finite difference method as follows:
+    //
+    // d2C   C[i+1]*(R[i] - R[i-1]) + C[i-1]*(R[i+1] - R[i]) - C[i]*(R[i+1] - R[i-1])
+    // --- = ------------------------------------------------------------------------
+    // dR2         1/2 * (R[i+1] - R[i-1]) * (R[i+1] - R[i]) * (R[i] - R[i-1])
+    //
+    // dC   C[t+dt] - C[t]
+    // -- = --------------
+    // dt         dt
+    for (size_t i = 1; i < space->length - 1; i++) {
+        equations->Ma[i] = (-2 * dt) / ((R[i+1] - R[i-1]) * (R[i] - R[i-1]));
+        equations->Mb[i] = 1 + (2 * dt) / ((R[i+1] - R[i]) * (R[i] - R[i-1]));
+        equations->Mc[i] = (-2 * dt) / ((R[i+1] - R[i-1]) * (R[i+1] - R[i]));
+    }
+
+    // Placeholder
+    equations->Ma[0] = 0.0;
+    equations->Mb[0] = 0.0;
+    equations->Mc[0] = 0.0;
+
+    // Bulk
+    equations->Ma[space->length] = 0.0;
+    equations->Mb[space->length] = 1.0;
+    equations->Mc[space->length] = 0.0;
 }
 
 
@@ -238,7 +271,7 @@ webcv_init(
 
     init_time(&sim->time, &sim->heap, &sim->params);
     init_space(&sim->space, &sim->heap, &sim->params, &sim->time);
-    init_equations(&sim->equations, &sim->heap, &sim->space);
+    init_equations(&sim->equations, &sim->heap, &sim->space, &sim->time);
 
     sim->index = 0;
     return sim;
@@ -251,6 +284,10 @@ webcv_next(Simulation *sim, double *Eout, double *Iout)
     double I;
 
     E = sim->time.E[sim->index];
+
+    debug_i(sim->index);
+    debug_f(sim->equations.C[0]);
+    debug_f(sim->equations.C[1]);
 
     update_equations(&sim->equations);
     solve_equations(&sim->equations, &sim->heap);

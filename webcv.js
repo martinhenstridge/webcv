@@ -97,10 +97,11 @@ async function main() {
             shared_memory.byteOffset + 0,
             shared_memory.byteOffset + 8,
         );
-        data.push({
+        let datum = {
             "E": shared_memory.getFloat64(0, true), // WASM is little endian
             "I": shared_memory.getFloat64(8, true), // WASM is little endian
-        });
+        };
+        data.push(datum);
         update_plot(data);
     }
 }
