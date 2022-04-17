@@ -1,6 +1,6 @@
 const MARGIN = 80;
 const WIDTH = 960 - 2 * MARGIN;
-const HEIGHT = 480 - 2 * MARGIN;
+const HEIGHT = 720 - 2 * MARGIN;
 
 const Ei = -0.3;
 const Ef = +0.3;
@@ -80,11 +80,11 @@ async function main() {
         0.5,  // alpha [-]
         Ei,   // Ei [V]
         Ef,   // Ef [V]
-        0.1,  // re [cm]
-        0.1,  // scanrate [V s-1]
+        0.01,  // re [cm]
+        0.01,  // scanrate [V s-1]
         1.0,  // conc [mM]
         1e-5, // D [cm2 s-1]
-        1.0,  // t_density [-]
+        10.0, // t_density [-]
         1e-5, // h0 [-]
         1.1,  // gamma [-]
     );

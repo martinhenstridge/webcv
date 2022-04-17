@@ -41,10 +41,8 @@ typedef struct {
 
 typedef struct {
     size_t  length;
-    double  dt;
     double *E;
-    double *kA;
-    double *kB;
+    double  dt;
 } Time;
 
 typedef struct {
@@ -54,10 +52,10 @@ typedef struct {
 
 typedef struct {
     size_t  length;
-    double *Ma;
-    double *Mb;
-    double *Mc;
-    double *C;
+    double *matrix_a;
+    double *matrix_b;
+    double *matrix_c;
+    double *vector;
 } Equations;
 
 typedef struct {
@@ -103,16 +101,6 @@ init_time(Time *time, Heap *heap, const Parameters *params)
     }
     heap->next = get_next_aligned(time->E + length);
 
-    // Calculate rate constants
-    time->kA = heap->next;
-    heap->next = get_next_aligned(time->kA + length);
-    time->kB = heap->next;
-    heap->next = get_next_aligned(time->kB + length);
-    for (size_t i = 0; i < length; i++) {
-        time->kA[i] = params->K0 * exp((1 - params->alpha) * time->E[i]);
-        time->kB[i] = params->K0 * exp(-params->alpha * time->E[i]);
-    }
-
     time->length = length;
     time->dt = dE / params->sigma;
 }
@@ -148,89 +136,103 @@ init_equations(Equations *equations, Heap *heap, const Space *space, const Time 
 {
     equations->length = space->length;
 
-    equations->Ma = heap->next;
-    heap->next = get_next_aligned(equations->Ma + equations->length);
-    equations->Mb = heap->next;
-    heap->next = get_next_aligned(equations->Mb + equations->length);
-    equations->Mc = heap->next;
-    heap->next = get_next_aligned(equations->Mc + equations->length);
-    equations->C = heap->next;
-    heap->next = get_next_aligned(equations->C + equations->length);
+    equations->matrix_a = heap->next;
+    heap->next = get_next_aligned(equations->matrix_a + equations->length);
+
+    equations->matrix_b = heap->next;
+    heap->next = get_next_aligned(equations->matrix_b + equations->length);
+
+    equations->matrix_c = heap->next;
+    heap->next = get_next_aligned(equations->matrix_c + equations->length);
+
+    equations->vector = heap->next;
+    heap->next = get_next_aligned(equations->vector + equations->length);
 
     double dt = time->dt;
     double *R = space->R;
 
-    // Bulk concentration everywhere
-    for (size_t i = 0; i < space->length; i++) {
-        equations->C[i] = 1.0;
-    }
-    debug_f(equations->C[0]);
-    debug_f(equations->C[1]);
-
     // We're solving the following equation:
     //
-    // dC   d2C
-    // -- = ---
-    // dt   dR2
+    // dc   2 dc   d2c
+    // -- = - -- + ---
+    // dt   r dr   dr2
     //
-    // Each can be approximated using the finite difference method as follows:
+    // Each term can be approximated using the finite difference method:
     //
-    // d2C   C[i+1]*(R[i] - R[i-1]) + C[i-1]*(R[i+1] - R[i]) - C[i]*(R[i+1] - R[i-1])
+    // dc   c[t1] - c[t0]
+    // -- = -------------
+    // dt        dt
+    //
+    // 2 dc    2     (c[i+1] - c[i-1])
+    // - -- = ---- * -------------------
+    // r dr   r[i]   (r[i+1] - r[i-1])
+    //
+    // d2c   c[i+1]*(r[i] - r[i-1]) + c[i-1]*(r[i+1] - r[i]) - c[i]*(r[i+1] - r[i-1])
     // --- = ------------------------------------------------------------------------
-    // dR2         1/2 * (R[i+1] - R[i-1]) * (R[i+1] - R[i]) * (R[i] - R[i-1])
+    // dr2         1/2 * (r[i+1] - r[i-1]) * (r[i+1] - r[i]) * (r[i] - r[i-1])
     //
-    // dC   C[t+dt] - C[t]
-    // -- = --------------
-    // dt         dt
     for (size_t i = 1; i < space->length - 1; i++) {
-        equations->Ma[i] = (-2 * dt) / ((R[i+1] - R[i-1]) * (R[i] - R[i-1]));
-        equations->Mb[i] = 1 + (2 * dt) / ((R[i+1] - R[i]) * (R[i] - R[i-1]));
-        equations->Mc[i] = (-2 * dt) / ((R[i+1] - R[i-1]) * (R[i+1] - R[i]));
+        equations->matrix_a[i] = (-2 * dt * R[i-1]) / (R[i] * (R[i+1] - R[i-1]) * (R[i] - R[i-1]));
+        equations->matrix_b[i] = 1 + (2 * dt) / ((R[i+1] - R[i]) * (R[i] - R[i-1]));
+        equations->matrix_c[i] = (-2 * dt * R[i+1]) / (R[i] * (R[i+1] - R[i-1]) * (R[i+1] - R[i]));
     }
 
-    // Placeholder
-    equations->Ma[0] = 0.0;
-    equations->Mb[0] = 0.0;
-    equations->Mc[0] = 0.0;
+    // Outer boundary - bulk concentration
+    equations->matrix_a[space->length - 1] = 0.0;
+    equations->matrix_b[space->length - 1] = 1.0;
+    equations->matrix_c[space->length - 1] = 0.0;
 
-    // Bulk
-    equations->Ma[space->length] = 0.0;
-    equations->Mb[space->length] = 1.0;
-    equations->Mc[space->length] = 0.0;
+    // Initialise bulk concentration everywhere
+    for (size_t i = 0; i < equations->length; i++) {
+        equations->vector[i] = 1.0;
+    }
 }
 
 
 static void
-update_equations(Equations *equations)
+update_equations(Equations *equations, const Parameters *params, double E)
 {
+    // Assumes oxidation!
+    double kA = params->K0 * exp((1 - params->alpha) * E);
+    double kB = params->K0 * exp(-params->alpha * E);
+
+    // Bulter-Volmer equation at electrode surface:
+    //
+    // dc
+    // -- = kA.c - kb.(1 - c)
+    // dr
+    //
+    equations->matrix_a[0] = 0.0;
+    equations->matrix_b[0] = 1 + params->h0 * (kA + kB);
+    equations->matrix_c[0] = -1.0;
+    equations->vector[0] = params->h0 * kB;
 }
 
 
 static void
-solve_equations(const Equations *equations, Heap *heap)
+solve_equations(Equations *equations, Heap *heap)
 {
     // Adapted from:
     // https://en.wikibooks.org/wiki/Algorithm_Implementation/Linear_Algebra/Tridiagonal_matrix_algorithm
-    size_t length = equations->length;
-    double *a = equations->Ma;
-    double *b = equations->Mb;
-    double *c = equations->Mc;
-    double *x = equations->C;
+    size_t n = equations->length;
+    const double *a = equations->matrix_a;
+    const double *b = equations->matrix_b;
+    const double *c = equations->matrix_c;
+    double *x = equations->vector;
     double *cprime = heap->next;
 
     cprime[0] = c[0] / b[0];
     x[0] = x[0] / b[0];
 
-    for (size_t i = 1; i < length; i++) {
-        double m = 1.0 / (b[i] - a[i] * cprime[i - 1]);
+    for (size_t i = 1; i < n; i++) {
+        const double m = 1.0 / (b[i] - a[i] * cprime[i - 1]);
         cprime[i] = c[i] * m;
         x[i] = (x[i] - a[i] * x[i - 1]) * m;
     }
 
-    for (size_t i = length - 1; i-- > 0; ) {
+    for (size_t i = n - 1; i-- > 0; ) {
         x[i] -= cprime[i] * x[i + 1];
     }
-    x[0] -= cprime[0] * x[1];
 }
 
 
@@ -285,14 +287,10 @@ webcv_next(Simulation *sim, double *Eout, double *Iout)
 
     E = sim->time.E[sim->index];
 
-    debug_i(sim->index);
-    debug_f(sim->equations.C[0]);
-    debug_f(sim->equations.C[1]);
-
-    update_equations(&sim->equations);
+    update_equations(&sim->equations, &sim->params, E);
     solve_equations(&sim->equations, &sim->heap);
 
-    I = (sim->equations.C[1] - sim->equations.C[0]) / sim->params.h0;
+    I = (sim->equations.vector[1] - sim->equations.vector[0]) / sim->params.h0;
 
     *Eout = (E * RT_F) + sim->conversion.E0;
     *Iout = I * sim->conversion.Ifactor;
