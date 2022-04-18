@@ -2,8 +2,8 @@ const MARGIN = 80;
 const WIDTH = 960 - 2 * MARGIN;
 const HEIGHT = 720 - 2 * MARGIN;
 
-const Ei = -0.3;
-const Ef = +0.3;
+const Ei = -1.0;
+const Ef = +1.0;
 
 let svg = d3.select("body").append("svg")
     .attr("width", WIDTH + 2 * MARGIN)
@@ -30,7 +30,7 @@ let yaxis = svg.append("g")
 
 
 function update_plot(data) {
-    yscale.domain(d3.extent(data, d => d.I));
+    yscale.domain(d3.extent(data, d => 1.1 * d.I));
     yaxis.call(d3.axisLeft(yscale));
 
     svg.selectAll(".line").remove();
@@ -59,7 +59,7 @@ async function get_wasm_instance(wasm, memory) {
 
 
 async function main() {
-    const memory = new WebAssembly.Memory({initial: 256});
+    const memory = new WebAssembly.Memory({initial: 8});
     const instance = await get_wasm_instance("webcv.wasm", memory)
     const { __heap_base, webcv_init, webcv_next } = instance.exports;
 
@@ -76,14 +76,14 @@ async function main() {
     const ctx = webcv_init(
         __heap_base.value + SHARED_MEMORY_BYTES, // Start of private heap
         0.0,   // E0 [V]
-        1.0,   // k0 [cm s-1]
-        0.5,   // alpha [-]
+        4e-3,  // k0 [cm s-1]
+        0.6,   // alpha [-]
         Ei,    // Ei [V]
         Ef,    // Ef [V]
-        0.01,  // re [cm]
+        0.0024,// re [cm]
         1.0,   // scanrate [V s-1]
-        1.0,   // conc [mM]
-        1e-5,  // D [cm2 s-1]
+        1.95,  // conc [mM]
+        2.7e-5,// D [cm2 s-1]
         10.0,  // t_density [-]
         1e-5,  // h0 [-]
         1.1,   // gamma [-]
