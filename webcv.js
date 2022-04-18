@@ -1,11 +1,10 @@
+"use strict";
+
 const MARGIN = 80;
 const WIDTH = 960 - 2 * MARGIN;
 const HEIGHT = 720 - 2 * MARGIN;
 
-const Ei = -1.0;
-const Ef = +1.0;
-
-let svg = d3.select("body").append("svg")
+let svg = d3.select("#voltammogram").append("svg")
     .attr("width", WIDTH + 2 * MARGIN)
     .attr("height", HEIGHT + 2 * MARGIN)
     .append("g")
@@ -18,7 +17,7 @@ let line = d3.line()
     .x(d => xscale(d.E))
     .y(d => yscale(d.I));
 
-xscale.domain([Ei, Ef]);
+xscale.domain([0, 0]);
 yscale.domain([0, 0]);
 
 let xaxis = svg.append("g")
@@ -41,9 +40,84 @@ function update_plot(data) {
 }
 
 
-async function get_wasm_instance(wasm, memory) {
+function WebCV(shared_memory, init_fn, next_fn) {
+    this.shared_memory = shared_memory;
+    this.init_fn = init_fn;
+    this.next_fn = next_fn;
+    this.ctx = null;
+    this.data = [];
+}
+
+
+WebCV.prototype.run = function (
+    E0,
+    k0,
+    alpha,
+    Ei,
+    Ef,
+    re,
+    scanrate,
+    conc,
+    D,
+    t_density,
+    h0,
+    gamma,
+) {
+    console.log("Starting...");
+    this.ctx = this.init_fn(
+        this.shared_memory.byteOffset + this.shared_memory.byteLength,
+        E0,
+        k0,
+        alpha,
+        Ei,
+        Ef,
+        re,
+        scanrate,
+        conc,
+        D,
+        t_density,
+        h0,
+        gamma,
+    );
+
+    xscale.domain([Ei, Ef]);
+    xaxis.call(d3.axisBottom(xscale));
+
+    this.data = [];
+    setTimeout(() => this.next());
+}
+
+
+WebCV.prototype.next = function () {
+    let more = this.next_fn(
+        this.ctx,
+        this.shared_memory.byteOffset + 0,
+        this.shared_memory.byteOffset + 8,
+    );
+
+    this.data.push({
+        "E": this.shared_memory.getFloat64(0, true), // WASM is little endian
+        "I": this.shared_memory.getFloat64(8, true), // WASM is little endian
+    });
+    update_plot(this.data);
+
+    if (more) {
+        setTimeout(() => this.next());
+    } else {
+        this.done();
+    }
+}
+
+
+WebCV.prototype.done = function() {
+    console.log("Done.");
+}
+
+
+async function load_webcv(url, pages) {
+    const memory = new WebAssembly.Memory({initial: pages});
     const { instance } = await WebAssembly.instantiateStreaming(
-        fetch(wasm), {
+        fetch(url), {
             env: {
                 memory: memory,
                 exp: Math.exp,
@@ -54,60 +128,36 @@ async function get_wasm_instance(wasm, memory) {
             }
         }
     );
-    return instance;
+    const { __heap_base, webcv_init, webcv_next } = instance.exports;
+    const shared_memory = new DataView(memory.buffer, __heap_base.value, 16);
+    return new WebCV(shared_memory, webcv_init, webcv_next);
 }
 
 
 async function main() {
-    const memory = new WebAssembly.Memory({initial: 8});
-    const instance = await get_wasm_instance("webcv.wasm", memory)
-    const { __heap_base, webcv_init, webcv_next } = instance.exports;
+    const webcv = await load_webcv("webcv.wasm", 8);
 
-    // Reserve memory at the start of the heap for communication between
-    // JS and WASM. The remainder of the heap is for the exclusive use
-    // of WASM.
-    const SHARED_MEMORY_BYTES = 16;
-    const shared_memory = new DataView(
-        memory.buffer,
-        __heap_base.value,
-        SHARED_MEMORY_BYTES,
-    );
+    const params = document.getElementById("parameters");
+    params.addEventListener("submit", function (evt) {
+        evt.preventDefault();
+        evt.stopPropagation();
 
-    const ctx = webcv_init(
-        __heap_base.value + SHARED_MEMORY_BYTES, // Start of private heap
-        0.0,   // E0 [V]
-        4e-3,  // k0 [cm s-1]
-        0.6,   // alpha [-]
-        Ei,    // Ei [V]
-        Ef,    // Ef [V]
-        0.0024,// re [cm]
-        1.0,   // scanrate [V s-1]
-        1.95,  // conc [mM]
-        2.7e-5,// D [cm2 s-1]
-        10.0,  // t_density [-]
-        1e-5,  // h0 [-]
-        1.1,   // gamma [-]
-    );
-
-    let data = [];
-    function next() {
-        let more = webcv_next(
-            ctx,
-            shared_memory.byteOffset + 0,
-            shared_memory.byteOffset + 8,
+        const inputs = evt.target.elements;
+        webcv.run(
+            inputs["E0"].value,
+            inputs["k0"].value,
+            inputs["alpha"].value,
+            inputs["Ei"].value,
+            inputs["Ef"].value,
+            inputs["re"].value,
+            inputs["scanrate"].value,
+            inputs["conc"].value,
+            inputs["D"].value,
+            inputs["t_density"].value,
+            inputs["h0"].value,
+            inputs["gamma"].value,
         );
-
-        data.push({
-            "E": shared_memory.getFloat64(0, true), // WASM is little endian
-            "I": shared_memory.getFloat64(8, true), // WASM is little endian
-        });
-        update_plot(data);
-
-        if (more) {
-            setTimeout(next);
-        }
-    }
-    next();
+    });
 }
 
 main();

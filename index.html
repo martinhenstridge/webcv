@@ -6,8 +6,82 @@
   stroke: steelblue;
   stroke-width: 2px;
 }
+#parameters {
+  font-family: monospace;
+}
+input:invalid {
+  border: 2px solid red;
+}
 </style>
 <body>
+  <h1>WebCV - Cyclic voltammetry in your browser</h1>
+  <div>
+    <form id="parameters">
+      <label>
+        <input type="number" step="any" name="E0" value="0.0">
+        E0 [V]
+      </label>
+      <br>
+      <label>
+        <input type="number" step="any" name="k0" value="1e-2">
+        k0 [cm s-1]
+      </label>
+      <br>
+      <label>
+        <input type="number" step="any" name="alpha" value="0.5">
+        Alpha [-]
+      </label>
+      <br>
+      <label>
+        <input type="number" step="any" name="Ei" value="-1.0">
+        Ei [V]
+      </label>
+      <br>
+      <label>
+        <input type="number" step="any" name="Ef" value="1.0">
+        Ef [V]
+      </label>
+      <br>
+      <label>
+        <input type="number" step="any" name="re" value="1e-3">
+        re [cm]
+      </label>
+      <br>
+      <label>
+        <input type="number" step="any" name="scanrate" value="0.1">
+        Scan rate [V s-1]
+      </label>
+      <br>
+      <label>
+        <input type="number" step="any" name="conc" value="1.0">
+        Concentration [mM]
+      </label>
+      <br>
+      <label>
+        <input type="number" step="any" name="D" value="1e-5">
+        Diffusion coefficient [cm2 s-1]
+      </label>
+      <br>
+      <label>
+        <input type="number" step="any" name="t_density" value="10">
+        Timestep density [-]
+      </label>
+      <br>
+      <label>
+        <input type="number" step="any" name="h0" value="1e-5">
+        Grid initial spacing [-]
+      </label>
+      <br>
+      <label>
+        <input type="number" step="any" name="gamma" value="1.1">
+        Grid expension factor [-]
+      </label>
+      <br>
+      <button>Simulate</button>
+    </form>
+  </div>
+  <div id="voltammogram">
+  </div>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="webcv.js"></script>
 </body>
