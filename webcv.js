@@ -75,35 +75,39 @@ async function main() {
 
     const ctx = webcv_init(
         __heap_base.value + SHARED_MEMORY_BYTES, // Start of private heap
-        0.0,  // E0 [V]
-        1.0,  // k0 [cm s-1]
-        0.5,  // alpha [-]
-        Ei,   // Ei [V]
-        Ef,   // Ef [V]
+        0.0,   // E0 [V]
+        1.0,   // k0 [cm s-1]
+        0.5,   // alpha [-]
+        Ei,    // Ei [V]
+        Ef,    // Ef [V]
         0.01,  // re [cm]
-        0.01,  // scanrate [V s-1]
-        1.0,  // conc [mM]
-        1e-5, // D [cm2 s-1]
-        10.0, // t_density [-]
-        1e-5, // h0 [-]
-        1.1,  // gamma [-]
+        1.0,   // scanrate [V s-1]
+        1.0,   // conc [mM]
+        1e-5,  // D [cm2 s-1]
+        10.0,  // t_density [-]
+        1e-5,  // h0 [-]
+        1.1,   // gamma [-]
     );
 
     let data = [];
-    let more = true;
-    while (more) {
-        more = webcv_next(
+    function next() {
+        let more = webcv_next(
             ctx,
             shared_memory.byteOffset + 0,
             shared_memory.byteOffset + 8,
         );
-        let datum = {
+
+        data.push({
             "E": shared_memory.getFloat64(0, true), // WASM is little endian
             "I": shared_memory.getFloat64(8, true), // WASM is little endian
-        };
-        data.push(datum);
+        });
         update_plot(data);
+
+        if (more) {
+            setTimeout(next);
+        }
     }
+    next();
 }
 
 main();
