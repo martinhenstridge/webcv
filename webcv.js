@@ -46,6 +46,7 @@ function WebCV(shared_memory, init_fn, next_fn) {
     this.next_fn = next_fn;
     this.ctx = null;
     this.data = [];
+    this.timeout = null;
 }
 
 
@@ -64,6 +65,11 @@ WebCV.prototype.run = function (
     gamma,
 ) {
     console.log("Starting...");
+    if (this.timeout) {
+        clearTimeout(this.timeout);
+        this.timeout = null;
+    }
+
     this.ctx = this.init_fn(
         this.shared_memory.byteOffset + this.shared_memory.byteLength,
         E0,
@@ -84,7 +90,7 @@ WebCV.prototype.run = function (
     xaxis.call(d3.axisBottom(xscale));
 
     this.data = [];
-    setTimeout(() => this.next());
+    this.timeout = setTimeout(() => this.next());
 }
 
 
@@ -102,7 +108,7 @@ WebCV.prototype.next = function () {
     update_plot(this.data);
 
     if (more) {
-        setTimeout(() => this.next());
+        this.timeout = setTimeout(() => this.next());
     } else {
         this.done();
     }
@@ -110,6 +116,7 @@ WebCV.prototype.next = function () {
 
 
 WebCV.prototype.done = function() {
+    this.timeout = null;
     console.log("Done.");
 }
 
@@ -138,7 +145,7 @@ async function main() {
     const webcv = await load_webcv("webcv.wasm", 8);
 
     const params = document.getElementById("parameters");
-    params.addEventListener("submit", function (evt) {
+    params.addEventListener("submit", (evt) => {
         evt.preventDefault();
         evt.stopPropagation();
 
