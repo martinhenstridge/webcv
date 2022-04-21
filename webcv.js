@@ -40,17 +40,19 @@ function update_plot(data) {
 }
 
 
-function WebCV(shared_memory, init_fn, next_fn) {
+function WebCV(shared_memory, init_fn, next_fn, submit_btn, cancel_btn) {
     this.shared_memory = shared_memory;
     this.init_fn = init_fn;
     this.next_fn = next_fn;
-    this.ctx = null;
+    this.submit_btn = submit_btn;
+    this.cancel_btn = cancel_btn;
     this.data = [];
     this.timeout = null;
+    this.ctx = null;
 }
 
 
-WebCV.prototype.run = function (
+WebCV.prototype.start = function (
     E0,
     k0,
     alpha,
@@ -65,10 +67,9 @@ WebCV.prototype.run = function (
     gamma,
 ) {
     console.log("Starting...");
-    if (this.timeout) {
-        clearTimeout(this.timeout);
-        this.timeout = null;
-    }
+
+    this.submit_btn.disabled = true;
+    this.cancel_btn.disabled = false;
 
     this.ctx = this.init_fn(
         this.shared_memory.byteOffset + this.shared_memory.byteLength,
@@ -86,11 +87,12 @@ WebCV.prototype.run = function (
         gamma,
     );
 
-    xscale.domain([Ei, Ef]);
-    xaxis.call(d3.axisBottom(xscale));
-
     this.data = [];
     this.timeout = setTimeout(() => this.next());
+
+    xscale.domain([Ei, Ef]);
+    xaxis.call(d3.axisBottom(xscale));
+    update_plot(this.data);
 }
 
 
@@ -115,13 +117,24 @@ WebCV.prototype.next = function () {
 }
 
 
-WebCV.prototype.done = function() {
-    this.timeout = null;
-    console.log("Done.");
+WebCV.prototype.stop = function () {
+    console.log("Stopping...");
+    if (this.timeout) {
+        clearTimeout(this.timeout);
+        this.timeout = null;
+    }
+    this.done();
 }
 
 
-async function load_webcv(url, pages) {
+WebCV.prototype.done = function () {
+    this.submit_btn.disabled = false;
+    this.cancel_btn.disabled = true;
+    console.log("Done.")
+}
+
+
+async function load_webcv(url, pages, submit_btn, cancel_btn) {
     const memory = new WebAssembly.Memory({initial: pages});
     const { instance } = await WebAssembly.instantiateStreaming(
         fetch(url), {
@@ -137,20 +150,23 @@ async function load_webcv(url, pages) {
     );
     const { __heap_base, webcv_init, webcv_next } = instance.exports;
     const shared_memory = new DataView(memory.buffer, __heap_base.value, 16);
-    return new WebCV(shared_memory, webcv_init, webcv_next);
+    return new WebCV(shared_memory, webcv_init, webcv_next, submit_btn, cancel_btn);
 }
 
 
 async function main() {
-    const webcv = await load_webcv("webcv.wasm", 8);
-
     const params = document.getElementById("parameters");
+    const submit = document.getElementById("submit-button");
+    const cancel = document.getElementById("cancel-button");
+
+    const webcv = await load_webcv("webcv.wasm", 8, submit, cancel);
+
     params.addEventListener("submit", (evt) => {
         evt.preventDefault();
         evt.stopPropagation();
 
         const inputs = evt.target.elements;
-        webcv.run(
+        webcv.start(
             inputs["E0"].value,
             inputs["k0"].value,
             inputs["alpha"].value,
@@ -165,6 +181,16 @@ async function main() {
             inputs["gamma"].value,
         );
     });
+
+    cancel.addEventListener("click", (evt) => {
+        evt.preventDefault();
+        evt.stopPropagation();
+
+        webcv.stop();
+    });
+
+    submit.disabled = false;
+    cancel.disabled = true;
 }
 
 main();
