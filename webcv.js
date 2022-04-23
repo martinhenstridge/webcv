@@ -98,7 +98,7 @@ WebCV.prototype.start = function(
 
 
 WebCV.prototype.next = function() {
-    let more = this.next_fn(
+    let done = this.next_fn(
         this.shared_memory.byteOffset + 0,
         this.shared_memory.byteOffset + 8,
     );
@@ -109,10 +109,10 @@ WebCV.prototype.next = function() {
     });
     update_plot(this.data);
 
-    if (more) {
-        this.timeout = setTimeout(() => this.next());
-    } else {
+    if (done) {
         this.done();
+    } else {
+        this.timeout = setTimeout(() => this.next());
     }
 }
 

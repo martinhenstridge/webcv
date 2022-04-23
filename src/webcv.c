@@ -350,6 +350,6 @@ webcv_next(double *Eout, double *Iout)
     *Eout = (E * RT_F) + conversion.E0;
     *Iout = I * conversion.I_factor;
 
-    index += 1;
-    return index < time.length;
+    ++index;
+    return index == time.length;
 }
