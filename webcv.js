@@ -53,6 +53,7 @@ function WebCV(shared_memory, init_fn, next_fn, submit_btn, cancel_btn) {
 
 
 WebCV.prototype.start = function (
+    redox,
     E0,
     k0,
     alpha,
@@ -73,6 +74,7 @@ WebCV.prototype.start = function (
 
     this.ctx = this.init_fn(
         this.shared_memory.byteOffset + this.shared_memory.byteLength,
+        redox,
         E0,
         k0,
         alpha,
@@ -90,7 +92,7 @@ WebCV.prototype.start = function (
     this.data = [];
     this.timeout = setTimeout(() => this.next());
 
-    xscale.domain([Ei, Ef]);
+    xscale.domain(d3.extent([Ei, Ef]));
     xaxis.call(d3.axisBottom(xscale));
     update_plot(this.data);
 }
@@ -167,6 +169,7 @@ async function main() {
 
         const inputs = evt.target.elements;
         webcv.start(
+            inputs["redox"].value,
             inputs["E0"].value,
             inputs["k0"].value,
             inputs["alpha"].value,
