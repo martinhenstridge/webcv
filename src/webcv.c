@@ -12,7 +12,6 @@ void debug_i(size_t i);
 void debug_f(double f);
 void debug_p(void *p);
 
-
 const double PI = 3.14159265359;
 const double F = 96485.33212;
 const double R = 8.314462618;
@@ -20,7 +19,6 @@ const double T = 298.15;
 
 const double F_RT = F / (R * T);
 const double RT_F = (R * T) / F;
-
 
 typedef struct {
     void *next;
