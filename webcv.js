@@ -52,7 +52,7 @@ function WebCV(shared_memory, init_fn, next_fn, submit_btn, cancel_btn) {
 }
 
 
-WebCV.prototype.start = function (
+WebCV.prototype.start = function(
     redox,
     E0,
     k0,
@@ -98,7 +98,7 @@ WebCV.prototype.start = function (
 }
 
 
-WebCV.prototype.next = function () {
+WebCV.prototype.next = function() {
     let more = this.next_fn(
         this.ctx,
         this.shared_memory.byteOffset + 0,
@@ -119,7 +119,7 @@ WebCV.prototype.next = function () {
 }
 
 
-WebCV.prototype.stop = function () {
+WebCV.prototype.stop = function() {
     console.log("Stopping...");
     if (this.timeout) {
         clearTimeout(this.timeout);
@@ -129,7 +129,7 @@ WebCV.prototype.stop = function () {
 }
 
 
-WebCV.prototype.done = function () {
+WebCV.prototype.done = function() {
     this.submit_btn.disabled = false;
     this.cancel_btn.disabled = true;
     console.log("Done.")
@@ -137,8 +137,12 @@ WebCV.prototype.done = function () {
 
 
 async function load_webcv(url, pages, submit_btn, cancel_btn) {
-    const memory = new WebAssembly.Memory({initial: pages});
-    const { instance } = await WebAssembly.instantiateStreaming(
+    const memory = new WebAssembly.Memory({
+        initial: pages
+    });
+    const {
+        instance
+    } = await WebAssembly.instantiateStreaming(
         fetch(url), {
             env: {
                 memory: memory,
@@ -150,7 +154,11 @@ async function load_webcv(url, pages, submit_btn, cancel_btn) {
             }
         }
     );
-    const { __heap_base, webcv_init, webcv_next } = instance.exports;
+    const {
+        __heap_base,
+        webcv_init,
+        webcv_next
+    } = instance.exports;
     const shared_memory = new DataView(memory.buffer, __heap_base.value, 16);
     return new WebCV(shared_memory, webcv_init, webcv_next, submit_btn, cancel_btn);
 }
