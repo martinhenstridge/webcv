@@ -63,15 +63,6 @@ typedef struct {
     double *vector;
 } Equations;
 
-typedef struct {
-    Parameters  params;
-    Conversion  conversion;
-    Time        time;
-    Space       space;
-    Equations   equations;
-    size_t      index;
-} Simulation;
-
 
 /*
  * ===========================================================================
