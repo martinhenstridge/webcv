@@ -14,15 +14,17 @@ let svg = d3.select("#voltammogram").append("svg")
     .append("g")
     .attr("transform", `translate(${MARGIN},${MARGIN})`);
 
-let xscale = d3.scaleLinear().range([0, WIDTH]);
-let yscale = d3.scaleLinear().range([HEIGHT, 0]);
+let xscale = d3.scaleLinear()
+    .range([0, WIDTH])
+    .domain([0, 0]);
+
+let yscale = d3.scaleLinear()
+    .range([HEIGHT, 0])
+    .domain([0, 0]);
 
 let line = d3.line()
     .x(d => xscale(d.E))
     .y(d => yscale(d.I));
-
-xscale.domain([0, 0]);
-yscale.domain([0, 0]);
 
 let xaxis = svg.append("g")
     .attr("transform", `translate(0,${HEIGHT})`)
