@@ -1,6 +1,7 @@
 "use strict";
 
 const params = document.getElementById("parameters");
+const inputs = document.getElementsByTagName("input");
 const submit = document.getElementById("submit-button");
 const cancel = document.getElementById("cancel-button");
 
@@ -46,6 +47,15 @@ function update_plot(data) {
 }
 
 
+function set_input_disabled(disabled) {
+    cancel.disabled = !disabled;
+    submit.disabled = disabled;
+    for (let i = 0; i < inputs.length; i++) {
+        inputs[i].disabled = disabled;
+    }
+}
+
+
 function WebCV(shared_memory, init_fn, next_fn) {
     this.shared_memory = shared_memory;
     this.init_fn = init_fn;
@@ -71,10 +81,6 @@ WebCV.prototype.start = function(
     gamma,
 ) {
     console.log("Starting...");
-
-    submit.disabled = true;
-    cancel.disabled = false;
-
     this.init_fn(
         this.shared_memory.byteOffset + this.shared_memory.byteLength,
         redox,
@@ -91,13 +97,14 @@ WebCV.prototype.start = function(
         h0,
         gamma,
     );
-
     this.data = [];
     this.timeout = setTimeout(() => this.next());
 
     xscale.domain(d3.extent([Ei, Ef]));
     xaxis.call(d3.axisBottom(xscale));
     update_plot(this.data);
+
+    set_input_disabled(true);
 }
 
 
@@ -132,8 +139,7 @@ WebCV.prototype.stop = function() {
 
 
 WebCV.prototype.done = function() {
-    submit.disabled = false;
-    cancel.disabled = true;
+    set_input_disabled(false);
     console.log("Done.")
 }
 
@@ -196,8 +202,7 @@ async function main() {
         webcv.stop();
     });
 
-    submit.disabled = false;
-    cancel.disabled = true;
+    set_input_disabled(false);
 }
 
 main();
