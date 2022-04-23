@@ -48,7 +48,6 @@ function WebCV(shared_memory, init_fn, next_fn, submit_btn, cancel_btn) {
     this.cancel_btn = cancel_btn;
     this.data = [];
     this.timeout = null;
-    this.ctx = null;
 }
 
 
@@ -72,7 +71,7 @@ WebCV.prototype.start = function(
     this.submit_btn.disabled = true;
     this.cancel_btn.disabled = false;
 
-    this.ctx = this.init_fn(
+    this.init_fn(
         this.shared_memory.byteOffset + this.shared_memory.byteLength,
         redox,
         E0,
@@ -100,7 +99,6 @@ WebCV.prototype.start = function(
 
 WebCV.prototype.next = function() {
     let more = this.next_fn(
-        this.ctx,
         this.shared_memory.byteOffset + 0,
         this.shared_memory.byteOffset + 8,
     );

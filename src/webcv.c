@@ -3,26 +3,29 @@
 #define OXIDATION +1
 #define REDUCTION -1
 
-// No stdlib, so imported from JS.
+
+// No stdlib included, declare utils imported from JS
 double exp(double x);
 double sqrt(double x);
-
-// Debug util functions from JS.
 void debug_i(size_t i);
 void debug_f(double f);
 void debug_p(void *p);
 
+
+// Useful constants
 const double PI = 3.14159265359;
 const double F = 96485.33212;
 const double R = 8.314462618;
 const double T = 298.15;
-
 const double F_RT = F / (R * T);
 const double RT_F = (R * T) / F;
 
-typedef struct {
-    void *next;
-} Heap;
+
+/*
+ * ===========================================================================
+ * Type definitions
+ * ===========================================================================
+ */
 
 typedef struct {
     double k0;
@@ -61,7 +64,6 @@ typedef struct {
 } Equations;
 
 typedef struct {
-    Heap        heap;
     Parameters  params;
     Conversion  conversion;
     Time        time;
@@ -71,6 +73,13 @@ typedef struct {
 } Simulation;
 
 
+/*
+ * ===========================================================================
+ * Rudimentary heap memory allocation
+ * ===========================================================================
+ */
+
+static void *_heap = NULL;
 static inline void *
 get_next_aligned(void *p)
 {
@@ -79,10 +88,19 @@ get_next_aligned(void *p)
     size_t next = (addr + 0x07) & ~0x07;
     return (void *)next;
 }
+#define HEAP_INIT(ptr)            (_heap) = (ptr)
+#define HEAP_ALLOC_START()        (_heap)
+#define HEAP_ALLOC_END(ptr, len)  (_heap) = get_next_aligned((ptr) + (len))
 
+
+/*
+ * ===========================================================================
+ * Implementation internals
+ * ===========================================================================
+ */
 
 static void
-init_time(Time *time, Heap *heap, const Parameters *params)
+init_time(Time *time, const Parameters *params)
 {
     double dE;
     size_t length;
@@ -90,11 +108,11 @@ init_time(Time *time, Heap *heap, const Parameters *params)
     dE = 1.0 / params->t_density;
     time->dt = dE / params->sigma;
 
-    time->E = heap->next;
-    time->E[0] = params->Ei;
-    length = 1;
+    time->E = HEAP_ALLOC_START();
 
     // Forward sweep
+    time->E[0] = params->Ei;
+    length = 1;
     if (params->Ef > params->Ei) {
         while (time->E[length - 1] < params->Ef) {
             time->E[length] = time->E[length - 1] + dE;
@@ -112,14 +130,14 @@ init_time(Time *time, Heap *heap, const Parameters *params)
         time->E[length] = time->E[i - 1];
         ++length;
     }
-
     time->length = length;
-    heap->next = get_next_aligned(time->E + length);
+
+    HEAP_ALLOC_END(time->E, length);
 }
 
 
 static void
-init_space(Space *space, Heap *heap, const Parameters *params, const Time *time)
+init_space(Space *space, const Parameters *params, const Time *time)
 {
     double dR;
     double limit;
@@ -128,8 +146,9 @@ init_space(Space *space, Heap *heap, const Parameters *params, const Time *time)
     dR = params->h0;
     limit = 1 + 6 * sqrt(time->dt * time->length);
 
+    space->R = HEAP_ALLOC_START();
+
     // Calculate expanding grid
-    space->R = heap->next;
     space->R[0] = 1.0;
     length = 1;
     while (space->R[length - 1] < limit) {
@@ -138,26 +157,27 @@ init_space(Space *space, Heap *heap, const Parameters *params, const Time *time)
         ++length;
     }
     space->length = length;
-    heap->next = get_next_aligned(space->R + length);
+
+    HEAP_ALLOC_END(space->R, length);
 }
 
 
 static void
-init_equations(Equations *equations, Heap *heap, const Space *space, const Time *time)
+init_equations(Equations *equations, const Space *space, const Time *time)
 {
     equations->length = space->length;
 
-    equations->matrix_a = heap->next;
-    heap->next = get_next_aligned(equations->matrix_a + equations->length);
+    equations->matrix_a = HEAP_ALLOC_START();
+    HEAP_ALLOC_END(equations->matrix_a, equations->length);
 
-    equations->matrix_b = heap->next;
-    heap->next = get_next_aligned(equations->matrix_b + equations->length);
+    equations->matrix_b = HEAP_ALLOC_START();
+    HEAP_ALLOC_END(equations->matrix_b, equations->length);
 
-    equations->matrix_c = heap->next;
-    heap->next = get_next_aligned(equations->matrix_c + equations->length);
+    equations->matrix_c = HEAP_ALLOC_START();
+    HEAP_ALLOC_END(equations->matrix_c, equations->length);
 
-    equations->vector = heap->next;
-    heap->next = get_next_aligned(equations->vector + equations->length);
+    equations->vector = HEAP_ALLOC_START();
+    HEAP_ALLOC_END(equations->vector, equations->length);
 
     double dt = time->dt;
     double *R = space->R;
@@ -183,9 +203,12 @@ init_equations(Equations *equations, Heap *heap, const Space *space, const Time 
     // dr2         1/2 * (r[i+1] - r[i-1]) * (r[i+1] - r[i]) * (r[i] - r[i-1])
     //
     for (size_t i = 1; i < space->length - 1; i++) {
-        equations->matrix_a[i] = (-2 * dt * R[i-1]) / (R[i] * (R[i+1] - R[i-1]) * (R[i] - R[i-1]));
-        equations->matrix_b[i] = 1 + (2 * dt) / ((R[i+1] - R[i]) * (R[i] - R[i-1]));
-        equations->matrix_c[i] = (-2 * dt * R[i+1]) / (R[i] * (R[i+1] - R[i-1]) * (R[i+1] - R[i]));
+        equations->matrix_a[i] =
+            (-2 * dt * R[i-1]) / (R[i] * (R[i+1] - R[i-1]) * (R[i] - R[i-1]));
+        equations->matrix_b[i] =
+            1 + (2 * dt) / ((R[i+1] - R[i]) * (R[i] - R[i-1]));
+        equations->matrix_c[i] =
+            (-2 * dt * R[i+1]) / (R[i] * (R[i+1] - R[i-1]) * (R[i+1] - R[i]));
     }
 
     // Outer boundary - bulk concentration
@@ -217,7 +240,7 @@ update_equations(Equations *equations, double dR, double kA, double kB)
 
 
 static void
-solve_equations(Equations *equations, Heap *heap)
+solve_equations(Equations *equations)
 {
     // Adapted from:
     // https://en.wikibooks.org/wiki/Algorithm_Implementation/Linear_Algebra/Tridiagonal_matrix_algorithm
@@ -226,7 +249,7 @@ solve_equations(Equations *equations, Heap *heap)
     const double *b = equations->matrix_b;
     const double *c = equations->matrix_c;
     double *x = equations->vector;
-    double *cprime = heap->next;
+    double *cprime = HEAP_ALLOC_START();
 
     cprime[0] = c[0] / b[0];
     x[0] = x[0] / b[0];
@@ -243,7 +266,21 @@ solve_equations(Equations *equations, Heap *heap)
 }
 
 
-Simulation *
+/*
+ * ===========================================================================
+ * Public API
+ * ===========================================================================
+ */
+
+static Parameters  params;
+static Conversion  conversion;
+static Time        time;
+static Space       space;
+static Equations   equations;
+static size_t      index;
+
+
+void
 webcv_init(
     void *heap_base,
     int redox,
@@ -260,63 +297,59 @@ webcv_init(
     double h0,
     double gamma)
 {
-    Simulation *sim = heap_base;
-
-    // Begin heap after the sim structure
-    sim->heap.next = get_next_aligned(sim + 1);
+    HEAP_INIT(heap_base);
 
     // Store simulation parameters
     switch (redox) {
     case OXIDATION:
-        sim->params.kA_factor = 1 - alpha;
-        sim->params.kB_factor = -alpha;
+        params.kA_factor = 1 - alpha;
+        params.kB_factor = -alpha;
         break;
     case REDUCTION:
-        sim->params.kA_factor = -alpha;
-        sim->params.kB_factor = 1 - alpha;
+        params.kA_factor = -alpha;
+        params.kB_factor = 1 - alpha;
         break;
     }
-    sim->params.k0 = k0 * (re / D);
-    sim->params.Ei = F_RT * (Ei - E0);
-    sim->params.Ef = F_RT * (Ef - E0);
-    sim->params.sigma = scanrate * F_RT * ((re * re) / D);
-    sim->params.t_density = t_density;
-    sim->params.h0 = h0;
-    sim->params.gamma = gamma;
+    params.k0 = k0 * (re / D);
+    params.Ei = F_RT * (Ei - E0);
+    params.Ef = F_RT * (Ef - E0);
+    params.sigma = scanrate * F_RT * ((re * re) / D);
+    params.t_density = t_density;
+    params.h0 = h0;
+    params.gamma = gamma;
 
     // Store values to convert outputs back again
-    sim->conversion.E0 = E0;
-    sim->conversion.I_factor = redox * 2 * PI * F * D * re * conc * 1e-6;
+    conversion.E0 = E0;
+    conversion.I_factor = redox * 2 * PI * F * D * re * conc * 1e-6;
 
-    init_time(&sim->time, &sim->heap, &sim->params);
-    init_space(&sim->space, &sim->heap, &sim->params, &sim->time);
-    init_equations(&sim->equations, &sim->heap, &sim->space, &sim->time);
+    init_time(&time, &params);
+    init_space(&space, &params, &time);
+    init_equations(&equations, &space, &time);
 
-    sim->index = 0;
-    return sim;
+    index = 0;
 }
 
 
 int
-webcv_next(Simulation *sim, double *Eout, double *Iout)
+webcv_next(double *Eout, double *Iout)
 {
     double E;
     double I;
     double kA;
     double kB;
 
-    E = sim->time.E[sim->index];
-    kA = sim->params.k0 * exp(E * sim->params.kA_factor);
-    kB = sim->params.k0 * exp(E * sim->params.kB_factor);
+    E = time.E[index];
+    kA = params.k0 * exp(E * params.kA_factor);
+    kB = params.k0 * exp(E * params.kB_factor);
 
-    update_equations(&sim->equations, sim->params.h0, kA, kB);
-    solve_equations(&sim->equations, &sim->heap);
+    update_equations(&equations, params.h0, kA, kB);
+    solve_equations(&equations);
 
-    I = (sim->equations.vector[1] - sim->equations.vector[0]) / sim->params.h0;
+    I = (equations.vector[1] - equations.vector[0]) / params.h0;
 
-    *Eout = (E * RT_F) + sim->conversion.E0;
-    *Iout = I * sim->conversion.I_factor;
+    *Eout = (E * RT_F) + conversion.E0;
+    *Iout = I * conversion.I_factor;
 
-    sim->index += 1;
-    return sim->index < sim->time.length;
+    index += 1;
+    return index < time.length;
 }
