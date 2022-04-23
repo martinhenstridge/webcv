@@ -1,114 +1,73 @@
 <!DOCTYPE html>
 <html>
-<style>
-.line {
-  fill: none;
-  stroke: steelblue;
-  stroke-width: 2px;
-}
-input, #parameters {
-  font-family: monospace;
-}
-fieldset {
-  border: 0;
-}
-legend {
-  font-weight: bold;
-}
-</style>
+
+<head>
+  <meta charset="utf-8">
+  <style>
+    .line {
+      fill: none;
+      stroke: steelblue;
+      stroke-width: 2px;
+    }
+
+    input,
+    #parameters {
+      font-family: monospace;
+    }
+
+    fieldset {
+      border: 0;
+    }
+
+    legend {
+      font-weight: bold;
+    }
+  </style>
+  <title>WebCV</title>
+</head>
+
 <body>
   <h1>WebCV - Cyclic voltammetry in your browser</h1>
   <div>
-    <form id="parameters">
+    <form id="parameters" name="parameters">
       <fieldset>
-      <legend>Redox reaction type</legend>
-      <label>
-        <input type="radio" name="redox" value="+1" checked>
-        Oxidation (A <-> B + e)
-      </label>
-      <br>
-      <label>
-        <input type="radio" name="redox" value="-1">
-        Reduction (A + e <-> B)
-      </label>
+        <legend>Redox reaction type</legend>
+        <label><input type="radio" name="redox" value="+1" checked> Oxidation (A &lt;=&gt; B + e)</label><br>
+        <label><input type="radio" name="redox" value="-1"> Reduction (A + e &lt;=&gt; B)</label>
       </fieldset>
       <fieldset>
-      <legend>Redox reaction parameters</legend>
-      <label>
-        <input type="number" step="any" name="E0" value="0.0" required>
-        E0 [V]
-      </label>
-      <br>
-      <label>
-        <input type="number" step="any" name="k0" value="1e-2" required>
-        k0 [cm s-1]
-      </label>
-      <br>
-      <label>
-        <input type="number" step="any" name="alpha" value="0.5" required>
-        Alpha [-]
-      </label>
+        <legend>Redox reaction parameters</legend>
+        <label><input type="number" step="any" name="E0" value="0.0" required=""> E0 [V]</label><br>
+        <label><input type="number" step="any" name="k0" value="1e-2" required=""> k0 [cm s-1]</label><br>
+        <label><input type="number" step="any" name="alpha" value="0.5" required=""> Alpha [-]</label>
       </fieldset>
       <fieldset>
-      <legend>Potential sweep parameters</legend>
-      <label>
-        <input type="number" step="any" name="Ei" value="-1.0" required>
-        Ei [V]
-      </label>
-      <br>
-      <label>
-        <input type="number" step="any" name="Ef" value="1.0" required>
-        Ef [V]
-      </label>
-      <br>
-      <label>
-        <input type="number" step="any" name="scanrate" value="0.1" required>
-        Scan rate [V s-1]
-      </label>
+        <legend>Potential sweep parameters</legend>
+        <label><input type="number" step="any" name="Ei" value="-1.0" required=""> Ei [V]</label><br>
+        <label><input type="number" step="any" name="Ef" value="1.0" required=""> Ef [V]</label><br>
+        <label><input type="number" step="any" name="scanrate" value="0.1" required=""> Scan rate [V s-1]</label>
       </fieldset>
       <fieldset>
-      <legend>Electrode + solution parameters</legend>
-      <label>
-        <input type="number" step="any" name="re" value="1e-3" required>
-        re [cm]
-      </label>
-      <br>
-      <label>
-        <input type="number" step="any" name="conc" value="1.0" required>
-        Concentration [mM]
-      </label>
-      <br>
-      <label>
-        <input type="number" step="any" name="D" value="1e-5" required>
-        Diffusion coefficient [cm2 s-1]
-      </label>
+        <legend>Electrode + solution parameters</legend>
+        <label><input type="number" step="any" name="re" value="1e-3" required=""> re [cm]</label><br>
+        <label><input type="number" step="any" name="conc" value="1.0" required=""> Concentration [mM]</label><br>
+        <label><input type="number" step="any" name="D" value="1e-5" required=""> Diffusion coefficient [cm2 s-1]</label>
       </fieldset>
       <fieldset>
-      <legend>Simulation parameters</legend>
-      <label>
-        <input type="number" step="any" name="t_density" value="5" required>
-        Timestep density [-]
-      </label>
-      <br>
-      <label>
-        <input type="number" step="any" name="h0" value="1e-5" required>
-        Grid initial spacing [-]
-      </label>
-      <br>
-      <label>
-        <input type="number" step="any" name="gamma" value="1.1" required>
-        Grid expansion factor [-]
-      </label>
+        <legend>Simulation parameters</legend>
+        <label><input type="number" step="any" name="t_density" value="5" required=""> Timestep density [-]</label><br>
+        <label><input type="number" step="any" name="h0" value="1e-5" required=""> Grid initial spacing [-]</label><br>
+        <label><input type="number" step="any" name="gamma" value="1.1" required=""> Grid expansion factor [-]</label>
       </fieldset>
       <fieldset>
-      <button id="submit-button" type="submit" disabled>Simulate</button>
-      <button id="cancel-button" type="button" disabled>Cancel</button>
+        <button id="submit-button" type="submit" disabled>Simulate</button>
+        <button id="cancel-button" type="button" disabled>Cancel</button>
       </fieldset>
     </form>
   </div>
-  <div id="voltammogram">
-  </div>
+  <div id="voltammogram"></div>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="webcv.js"></script>
 </body>
+
 </html>
