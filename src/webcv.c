@@ -13,12 +13,12 @@ void debug_p(void *p);
 
 
 // Useful constants
-const double PI = 3.14159265359;
-const double F = 96485.33212;
-const double R = 8.314462618;
-const double T = 298.15;
-const double F_RT = F / (R * T);
-const double RT_F = (R * T) / F;
+static const double PI = 3.14159265359;
+static const double F = 96485.33212;
+static const double R = 8.314462618;
+static const double T = 298.15;
+static const double F_RT = F / (R * T);
+static const double RT_F = (R * T) / F;
 
 
 /*
