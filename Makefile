@@ -9,6 +9,8 @@ wasm:
 >   -Wl,--export-all \
 >   -Wl,--import-memory \
 >   -Wl,--allow-undefined \
+>   -Wall \
+>   -Werror \
 >   -nostdlib \
 >   -O3 \
 >   -o webcv.wasm \
