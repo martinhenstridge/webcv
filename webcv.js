@@ -1,5 +1,9 @@
 "use strict";
 
+const params = document.getElementById("parameters");
+const submit = document.getElementById("submit-button");
+const cancel = document.getElementById("cancel-button");
+
 const MARGIN = 80;
 const WIDTH = 960 - 2 * MARGIN;
 const HEIGHT = 720 - 2 * MARGIN;
@@ -40,12 +44,10 @@ function update_plot(data) {
 }
 
 
-function WebCV(shared_memory, init_fn, next_fn, submit_btn, cancel_btn) {
+function WebCV(shared_memory, init_fn, next_fn) {
     this.shared_memory = shared_memory;
     this.init_fn = init_fn;
     this.next_fn = next_fn;
-    this.submit_btn = submit_btn;
-    this.cancel_btn = cancel_btn;
     this.data = [];
     this.timeout = null;
 }
@@ -68,8 +70,8 @@ WebCV.prototype.start = function(
 ) {
     console.log("Starting...");
 
-    this.submit_btn.disabled = true;
-    this.cancel_btn.disabled = false;
+    submit.disabled = true;
+    cancel.disabled = false;
 
     this.init_fn(
         this.shared_memory.byteOffset + this.shared_memory.byteLength,
@@ -128,19 +130,14 @@ WebCV.prototype.stop = function() {
 
 
 WebCV.prototype.done = function() {
-    this.submit_btn.disabled = false;
-    this.cancel_btn.disabled = true;
+    submit.disabled = false;
+    cancel.disabled = true;
     console.log("Done.")
 }
 
 
-async function load_webcv(url, pages, submit_btn, cancel_btn) {
-    const memory = new WebAssembly.Memory({
-        initial: pages
-    });
-    const {
-        instance
-    } = await WebAssembly.instantiateStreaming(
+async function instantiate(url, memory) {
+    const { instance } = await WebAssembly.instantiateStreaming(
         fetch(url), {
             env: {
                 memory: memory,
@@ -152,22 +149,21 @@ async function load_webcv(url, pages, submit_btn, cancel_btn) {
             }
         }
     );
+    return instance;
+}
+
+
+async function main() {
+    const memory = new WebAssembly.Memory({ initial: 8 });
+    const instance = await instantiate("webcv.wasm", memory);
     const {
         __heap_base,
         webcv_init,
         webcv_next
     } = instance.exports;
+
     const shared_memory = new DataView(memory.buffer, __heap_base.value, 16);
-    return new WebCV(shared_memory, webcv_init, webcv_next, submit_btn, cancel_btn);
-}
-
-
-async function main() {
-    const params = document.getElementById("parameters");
-    const submit = document.getElementById("submit-button");
-    const cancel = document.getElementById("cancel-button");
-
-    const webcv = await load_webcv("webcv.wasm", 8, submit, cancel);
+    const webcv = new WebCV(shared_memory, webcv_init, webcv_next);
 
     params.addEventListener("submit", (evt) => {
         evt.preventDefault();
