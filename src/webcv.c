@@ -70,7 +70,6 @@ typedef struct {
  * ===========================================================================
  */
 
-static void *_heap = NULL;
 static inline void *
 get_next_aligned(void *p)
 {
@@ -79,9 +78,15 @@ get_next_aligned(void *p)
     size_t next = (addr + 0x07) & ~0x07;
     return (void *)next;
 }
-#define HEAP_INIT(ptr)            (_heap) = (ptr)
-#define HEAP_ALLOC_START()        (_heap)
-#define HEAP_ALLOC_END(ptr, len)  (_heap) = get_next_aligned((ptr) + (len))
+static void *_heap;
+#define HEAP_INIT(ptr)               (_heap) = (ptr)
+#define HEAP_ALLOC_BEGIN(ptr)        (ptr) = (_heap)
+#define HEAP_ALLOC_COMMIT(ptr, len)  (_heap) = get_next_aligned((ptr) + (len))
+#define HEAP_ALLOC(ptr, len)             \
+    do {                                 \
+        HEAP_ALLOC_BEGIN((ptr));         \
+        HEAP_ALLOC_COMMIT((ptr), (len)); \
+    } while (0)
 
 
 /*
@@ -99,7 +104,7 @@ init_time(Time *time, const Parameters *params)
     dE = 1.0 / params->t_density;
     time->dt = dE / params->sigma;
 
-    time->E = HEAP_ALLOC_START();
+    HEAP_ALLOC_BEGIN(time->E);
 
     // Forward sweep
     time->E[0] = params->Ei;
@@ -123,7 +128,7 @@ init_time(Time *time, const Parameters *params)
     }
     time->length = length;
 
-    HEAP_ALLOC_END(time->E, length);
+    HEAP_ALLOC_COMMIT(time->E, length);
 }
 
 
@@ -137,7 +142,7 @@ init_space(Space *space, const Parameters *params, const Time *time)
     dR = params->h0;
     limit = 1 + 6 * sqrt(time->dt * time->length);
 
-    space->R = HEAP_ALLOC_START();
+    HEAP_ALLOC_BEGIN(space->R);
 
     // Calculate expanding grid
     space->R[0] = 1.0;
@@ -149,7 +154,7 @@ init_space(Space *space, const Parameters *params, const Time *time)
     }
     space->length = length;
 
-    HEAP_ALLOC_END(space->R, length);
+    HEAP_ALLOC_COMMIT(space->R, length);
 }
 
 
@@ -158,17 +163,10 @@ init_equations(Equations *equations, const Space *space, const Time *time)
 {
     equations->length = space->length;
 
-    equations->matrix_a = HEAP_ALLOC_START();
-    HEAP_ALLOC_END(equations->matrix_a, equations->length);
-
-    equations->matrix_b = HEAP_ALLOC_START();
-    HEAP_ALLOC_END(equations->matrix_b, equations->length);
-
-    equations->matrix_c = HEAP_ALLOC_START();
-    HEAP_ALLOC_END(equations->matrix_c, equations->length);
-
-    equations->vector = HEAP_ALLOC_START();
-    HEAP_ALLOC_END(equations->vector, equations->length);
+    HEAP_ALLOC(equations->matrix_a, equations->length);
+    HEAP_ALLOC(equations->matrix_b, equations->length);
+    HEAP_ALLOC(equations->matrix_c, equations->length);
+    HEAP_ALLOC(equations->vector, equations->length);
 
     double dt = time->dt;
     double *R = space->R;
@@ -235,12 +233,16 @@ solve_equations(Equations *equations)
 {
     // Adapted from:
     // https://en.wikibooks.org/wiki/Algorithm_Implementation/Linear_Algebra/Tridiagonal_matrix_algorithm
-    size_t n = equations->length;
+    size_t        n = equations->length;
     const double *a = equations->matrix_a;
     const double *b = equations->matrix_b;
     const double *c = equations->matrix_c;
-    double *x = equations->vector;
-    double *cprime = HEAP_ALLOC_START();
+    double       *x = equations->vector;
+    double       *cprime;
+
+    // Use heap memory as scratch space.
+    // Note: this allocation is does not get committed.
+    HEAP_ALLOC_BEGIN(cprime);
 
     cprime[0] = c[0] / b[0];
     x[0] = x[0] / b[0];
