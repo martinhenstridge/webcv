@@ -5,7 +5,7 @@ const inputs = document.getElementsByTagName("input");
 const submit = document.getElementById("submit-button");
 const cancel = document.getElementById("cancel-button");
 
-const MARGIN = 80;
+const MARGIN = 60;
 const WIDTH = 960 - 2 * MARGIN;
 const HEIGHT = 720 - 2 * MARGIN;
 
@@ -37,7 +37,7 @@ let yaxis = svg.append("g")
 
 function update_plot(data) {
     yscale.domain(d3.extent(data, d => 1.1 * d.I));
-    yaxis.call(d3.axisLeft(yscale));
+    yaxis.call(d3.axisLeft(yscale).ticks(10, ".1e"));
 
     svg.selectAll(".line").remove();
     svg.append("path")
