@@ -40,7 +40,7 @@ typedef struct {
 } Parameters;
 
 typedef struct {
-    double E0;
+    double E_offset;
     double I_factor;
 } Conversion;
 
@@ -78,6 +78,7 @@ get_next_aligned(void *p)
     size_t next = (addr + 0x07) & ~0x07;
     return (void *)next;
 }
+
 static void *_heap;
 #define HEAP_INIT(ptr)               (_heap) = (ptr)
 #define HEAP_ALLOC_BEGIN(ptr)        (ptr) = (_heap)
@@ -162,14 +163,10 @@ static void
 init_equations(Equations *equations, const Space *space, const Time *time)
 {
     equations->length = space->length;
-
     HEAP_ALLOC(equations->matrix_a, equations->length);
     HEAP_ALLOC(equations->matrix_b, equations->length);
     HEAP_ALLOC(equations->matrix_c, equations->length);
     HEAP_ALLOC(equations->vector, equations->length);
-
-    double dt = time->dt;
-    double *R = space->R;
 
     // We're solving the following equation:
     //
@@ -191,7 +188,10 @@ init_equations(Equations *equations, const Space *space, const Time *time)
     // --- = ------------------------------------------------------------------------
     // dr2         1/2 * (r[i+1] - r[i-1]) * (r[i+1] - r[i]) * (r[i] - r[i-1])
     //
-    for (size_t i = 1; i < space->length - 1; i++) {
+    double dt = time->dt;
+    double *R = space->R;
+
+    for (size_t i = 1; i < equations->length - 1; i++) {
         equations->matrix_a[i] =
             (-2 * dt * R[i-1]) / (R[i] * (R[i+1] - R[i-1]) * (R[i] - R[i-1]));
         equations->matrix_b[i] =
@@ -201,9 +201,9 @@ init_equations(Equations *equations, const Space *space, const Time *time)
     }
 
     // Outer boundary - bulk concentration
-    equations->matrix_a[space->length - 1] = 0.0;
-    equations->matrix_b[space->length - 1] = 1.0;
-    equations->matrix_c[space->length - 1] = 0.0;
+    equations->matrix_a[equations->length - 1] = 0.0;
+    equations->matrix_b[equations->length - 1] = 1.0;
+    equations->matrix_c[equations->length - 1] = 0.0;
 
     // Initialise bulk concentration everywhere
     for (size_t i = 0; i < equations->length; i++) {
@@ -213,7 +213,7 @@ init_equations(Equations *equations, const Space *space, const Time *time)
 
 
 static void
-update_equations(Equations *equations, double dR, double kA, double kB)
+update_equations(Equations *equations, const Parameters *params, double E)
 {
     // Bulter-Volmer equation at electrode surface:
     //
@@ -221,6 +221,10 @@ update_equations(Equations *equations, double dR, double kA, double kB)
     // -- = kA.c - kb.(1 - c)
     // dr
     //
+    double dR = params->h0;
+    double kA = params->k0 * exp(E * params->kA_factor);
+    double kB = params->k0 * exp(E * params->kB_factor);
+
     equations->matrix_a[0] = 0.0;
     equations->matrix_b[0] = 1 + dR * (kA + kB);
     equations->matrix_c[0] = -1.0;
@@ -228,7 +232,7 @@ update_equations(Equations *equations, double dR, double kA, double kB)
 }
 
 
-static void
+static const double *
 solve_equations(Equations *equations)
 {
     // Adapted from:
@@ -241,7 +245,7 @@ solve_equations(Equations *equations)
     double       *cprime;
 
     // Use heap memory as scratch space.
-    // Note: this allocation is does not get committed.
+    // Note: this allocation does not get committed.
     HEAP_ALLOC_BEGIN(cprime);
 
     cprime[0] = c[0] / b[0];
@@ -256,6 +260,8 @@ solve_equations(Equations *equations)
     for (size_t i = n - 1; i-- > 0; ) {
         x[i] -= cprime[i] * x[i + 1];
     }
+
+    return x;
 }
 
 
@@ -292,7 +298,7 @@ webcv_init(
 {
     HEAP_INIT(heap_base);
 
-    // Store simulation parameters
+    // Store (dimensionless) simulation parameters
     switch (redox) {
     case OXIDATION:
         params.kA_factor = 1 - alpha;
@@ -312,7 +318,7 @@ webcv_init(
     params.gamma = gamma;
 
     // Store values to convert outputs back again
-    conversion.E0 = E0;
+    conversion.E_offset = E0;
     conversion.I_factor = redox * 2 * PI * F * D * re * conc * 1e-6;
 
     init_time(&time, &params);
@@ -326,21 +332,16 @@ webcv_init(
 int
 webcv_next(double *Eout, double *Iout)
 {
-    double E;
-    double I;
-    double kA;
-    double kB;
+    double        E;
+    double        I;
+    const double *C;
 
     E = time.E[index];
-    kA = params.k0 * exp(E * params.kA_factor);
-    kB = params.k0 * exp(E * params.kB_factor);
+    update_equations(&equations, &params, E);
+    C = solve_equations(&equations);
+    I = (C[1] - C[0]) / params.h0;
 
-    update_equations(&equations, params.h0, kA, kB);
-    solve_equations(&equations);
-
-    I = (equations.vector[1] - equations.vector[0]) / params.h0;
-
-    *Eout = (E * RT_F) + conversion.E0;
+    *Eout = (E * RT_F) + conversion.E_offset;
     *Iout = I * conversion.I_factor;
 
     ++index;
