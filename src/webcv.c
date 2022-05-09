@@ -4,9 +4,8 @@
 #define REDUCTION -1
 
 
-// No stdlib included, declare utils imported from JS
+// Declare various library functions (no stdlib available)
 double exp(double x);
-double sqrt(double x);
 void debug_i(size_t i);
 void debug_f(double f);
 void debug_p(void *p);
@@ -141,7 +140,7 @@ init_space(Space *space, const Parameters *params, const Time *time)
     size_t length;
 
     dR = params->h0;
-    limit = 1 + 6 * sqrt(time->dt * time->length);
+    limit = 1 + 6 * __builtin_sqrtf(time->dt * time->length);
 
     HEAP_ALLOC_BEGIN(space->R);
 
