@@ -1,9 +1,5 @@
 "use strict";
 
-const MARGIN = 60;
-const WIDTH = 960 - 2 * MARGIN;
-const HEIGHT = 720 - 2 * MARGIN;
-
 let simulation;
 let controls;
 let plot;
@@ -66,6 +62,10 @@ Controls.prototype.enabled = function(enabled) {
  */
 
 function Plot(target) {
+    const MARGIN = 60;
+    const WIDTH = 960 - 2 * MARGIN;
+    const HEIGHT = 720 - 2 * MARGIN;
+
     this.svg = d3.select(target)
       .append("svg")
         .attr("width", WIDTH + 2 * MARGIN)
