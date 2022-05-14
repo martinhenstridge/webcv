@@ -1,183 +1,31 @@
 "use strict";
 
-const params = document.getElementById("parameters");
-const inputs = document.getElementsByTagName("input");
-const submit = document.getElementById("submit-button");
-const cancel = document.getElementById("cancel-button");
-
 const MARGIN = 60;
 const WIDTH = 960 - 2 * MARGIN;
 const HEIGHT = 720 - 2 * MARGIN;
 
-let svg = d3.select("#voltammogram").append("svg")
-    .attr("width", WIDTH + 2 * MARGIN)
-    .attr("height", HEIGHT + 2 * MARGIN)
-    .append("g")
-    .attr("transform", `translate(${MARGIN},${MARGIN})`);
-
-let xscale = d3.scaleLinear()
-    .range([0, WIDTH])
-    .domain([0, 0]);
-
-let yscale = d3.scaleLinear()
-    .range([HEIGHT, 0])
-    .domain([0, 0]);
-
-let line = d3.line()
-    .x(d => xscale(d.E))
-    .y(d => yscale(d.I));
-
-let xaxis = svg.append("g")
-    .attr("transform", `translate(0,${HEIGHT})`)
-    .call(d3.axisBottom(xscale));
-
-let yaxis = svg.append("g")
-    .call(d3.axisLeft(yscale));
+let simulation;
+let controls;
+let plot;
 
 
-function update_plot(data) {
-    yscale.domain(d3.extent(data, d => 1.1 * d.I));
-    yaxis.call(d3.axisLeft(yscale).ticks(10, ".1e"));
+/*
+ * ============================================================================
+ * Controls
+ * ============================================================================
+ */
 
-    svg.selectAll(".line").remove();
-    svg.append("path")
-        .datum(data)
-        .attr("class", "line")
-        .attr("d", line);
-}
-
-
-function set_input_disabled(disabled) {
-    cancel.disabled = !disabled;
-    submit.disabled = disabled;
-    for (let i = 0; i < inputs.length; i++) {
-        inputs[i].disabled = disabled;
-    }
-}
-
-
-function WebCV(shared_memory, init_fn, next_fn) {
-    this.shared_memory = shared_memory;
-    this.init_fn = init_fn;
-    this.next_fn = next_fn;
-    this.data = [];
-    this.timeout = null;
-}
-
-
-WebCV.prototype.start = function(
-    redox,
-    E0,
-    k0,
-    alpha,
-    Ei,
-    Ef,
-    re,
-    scanrate,
-    conc,
-    D,
-    t_density,
-    h0,
-    gamma,
-) {
-    console.log("Starting...");
-    this.init_fn(
-        this.shared_memory.byteOffset + this.shared_memory.byteLength,
-        redox,
-        E0,
-        k0,
-        alpha,
-        Ei,
-        Ef,
-        re,
-        scanrate,
-        conc,
-        D,
-        t_density,
-        h0,
-        gamma,
-    );
-    this.data = [];
-    this.timeout = setTimeout(() => this.next());
-
-    xscale.domain(d3.extent([Ei, Ef]));
-    xaxis.call(d3.axisBottom(xscale));
-    update_plot(this.data);
-
-    set_input_disabled(true);
-}
-
-
-WebCV.prototype.next = function() {
-    let done = this.next_fn(
-        this.shared_memory.byteOffset + 0,
-        this.shared_memory.byteOffset + 8,
-    );
-
-    this.data.push({
-        "E": this.shared_memory.getFloat64(0, true), // WASM is little endian
-        "I": this.shared_memory.getFloat64(8, true), // WASM is little endian
-    });
-    update_plot(this.data);
-
-    if (done) {
-        this.done();
-    } else {
-        this.timeout = setTimeout(() => this.next());
-    }
-}
-
-
-WebCV.prototype.stop = function() {
-    console.log("Stopping...");
-    if (this.timeout) {
-        clearTimeout(this.timeout);
-        this.timeout = null;
-    }
-    this.done();
-}
-
-
-WebCV.prototype.done = function() {
-    set_input_disabled(false);
-    console.log("Done.")
-}
-
-
-async function instantiate(url, memory) {
-    const { instance } = await WebAssembly.instantiateStreaming(
-        fetch(url), {
-            env: {
-                memory: memory,
-                exp: Math.exp,
-                debug_i: arg => console.log(`wasm:int:${arg}`),
-                debug_f: arg => console.log(`wasm:flt:${arg}`),
-                debug_p: arg => console.log(`wasm:ptr:${arg}`),
-            }
-        }
-    );
-    return instance;
-}
-
-
-async function main() {
-    const memory = new WebAssembly.Memory({ initial: 8 });
-    const instance = await instantiate("webcv.wasm", memory);
-    const {
-        __heap_base,
-        webcv_init,
-        webcv_next
-    } = instance.exports;
-
-    const shared_memory = new DataView(memory.buffer, __heap_base.value, 16);
-    const webcv = new WebCV(shared_memory, webcv_init, webcv_next);
+function Controls(params, submit, cancel) {
+    this.inputs = params.getElementsByTagName("input");
+    this.submit = submit;
+    this.cancel = cancel;
 
     params.addEventListener("submit", (evt) => {
         evt.preventDefault();
         evt.stopPropagation();
 
         const inputs = evt.target.elements;
-        webcv.start(
+        simulation.init(
             inputs["redox"].value,
             inputs["E0"].value,
             inputs["k0"].value,
@@ -198,10 +46,219 @@ async function main() {
         evt.preventDefault();
         evt.stopPropagation();
 
-        webcv.stop();
+        simulation.kill();
+    });
+}
+
+Controls.prototype.enabled = function(enabled) {
+    this.cancel.disabled = enabled;
+    this.submit.disabled = !enabled;
+    for (let i = 0; i < this.inputs.length; i++) {
+        this.inputs[i].disabled = !enabled;
+    }
+}
+
+
+/*
+ * ============================================================================
+ * Plot
+ * ============================================================================
+ */
+
+function Plot(target) {
+    this.svg = d3.select(target)
+      .append("svg")
+        .attr("width", WIDTH + 2 * MARGIN)
+        .attr("height", HEIGHT + 2 * MARGIN)
+      .append("g")
+        .attr("transform", `translate(${MARGIN},${MARGIN})`);
+
+    this.xscale = d3.scaleLinear()
+        .range([0, WIDTH])
+        .domain([0, 0]);
+
+    this.yscale = d3.scaleLinear()
+        .range([HEIGHT, 0])
+        .domain([0, 0]);
+
+    this.xaxis = this.svg
+      .append("g")
+        .attr("transform", `translate(0,${HEIGHT})`)
+        .call(d3.axisBottom(this.xscale));
+
+    this.yaxis = this.svg
+      .append("g")
+        .call(d3.axisLeft(this.yscale));
+
+    this.line = d3.line()
+        .x(d => this.xscale(d.E))
+        .y(d => this.yscale(d.I));
+}
+
+Plot.prototype.init = function(xi, xf) {
+    this.xscale.domain(d3.extent([xi, xf]));
+    this.xaxis.call(d3.axisBottom(this.xscale));
+    this.update([]);
+}
+
+Plot.prototype.update = function(data) {
+    this.yscale.domain(d3.extent(data, d => 1.1 * d.I));
+    this.yaxis.call(d3.axisLeft(this.yscale).ticks(10, ".1e"));
+
+    this.svg.selectAll(".line").remove();
+    this.svg
+      .append("path")
+        .datum(data)
+        .attr("class", "line")
+        .attr("d", this.line);
+}
+
+
+/*
+ * ============================================================================
+ * Simulation
+ * ============================================================================
+ */
+
+function Simulation(memory, heap_base, webcv_init, webcv_next) {
+    this.shared_memory = new DataView(memory.buffer, heap_base.value, 16);
+    this.webcv_init = webcv_init;
+    this.webcv_next = webcv_next;
+    this.data = [];
+    this.timeout = null;
+}
+
+
+Simulation.prototype.init = function(
+    redox,
+    E0,
+    k0,
+    alpha,
+    Ei,
+    Ef,
+    re,
+    scanrate,
+    conc,
+    D,
+    t_density,
+    h0,
+    gamma,
+) {
+    console.log("Starting...");
+
+    controls.enabled(false);
+    plot.init(Ei, Ef);
+
+    this.webcv_init(
+        this.shared_memory.byteOffset + this.shared_memory.byteLength,
+        redox,
+        E0,
+        k0,
+        alpha,
+        Ei,
+        Ef,
+        re,
+        scanrate,
+        conc,
+        D,
+        t_density,
+        h0,
+        gamma,
+    );
+    this.data = [];
+    this.running = true;
+    this.timeout = setTimeout(() => this.next());
+
+    redraw(performance.now());
+}
+
+
+Simulation.prototype.next = function() {
+    let done = this.webcv_next(
+        this.shared_memory.byteOffset + 0,
+        this.shared_memory.byteOffset + 8,
+    );
+
+    this.data.push({
+        "E": this.shared_memory.getFloat64(0, true), // WASM is little endian
+        "I": this.shared_memory.getFloat64(8, true), // WASM is little endian
     });
 
-    set_input_disabled(false);
+    if (done) {
+        this.done();
+    } else {
+        this.timeout = setTimeout(() => this.next());
+    }
 }
+
+
+Simulation.prototype.kill = function() {
+    console.log("Killing...");
+    if (this.timeout) {
+        clearTimeout(this.timeout);
+        this.timeout = null;
+    }
+    this.done();
+}
+
+
+Simulation.prototype.done = function() {
+    this.running = false;
+    controls.enabled(true);
+    console.log("Done.")
+}
+
+
+/*
+ * ============================================================================
+ * Orchestration
+ * ============================================================================
+ */
+
+async function instantiate(url, memory) {
+    const { instance } = await WebAssembly.instantiateStreaming(
+        fetch(url), {
+            env: {
+                memory: memory,
+                exp: Math.exp,
+                debug_i: arg => console.log(`wasm:int:${arg}`),
+                debug_f: arg => console.log(`wasm:flt:${arg}`),
+                debug_p: arg => console.log(`wasm:ptr:${arg}`),
+            }
+        }
+    );
+    return instance;
+}
+
+
+function redraw(timestamp) {
+    plot.update(simulation.data);
+    if (simulation.running) {
+        window.requestAnimationFrame(redraw);
+    }
+}
+
+
+async function main() {
+    const params = document.getElementById("parameters");
+    const submit = document.getElementById("submit-button");
+    const cancel = document.getElementById("cancel-button");
+    const holder = document.getElementById("voltammogram");
+
+    const memory = new WebAssembly.Memory({ initial: 8 });
+    const instance = await instantiate("webcv.wasm", memory);
+    const {
+        __heap_base,
+        webcv_init,
+        webcv_next
+    } = instance.exports;
+
+    simulation = new Simulation(memory, __heap_base, webcv_init, webcv_next);
+    controls = new Controls(params, submit, cancel);
+    plot = new Plot(holder);
+
+    controls.enabled(true);
+}
+
 
 main();
