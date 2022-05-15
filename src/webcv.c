@@ -140,7 +140,7 @@ init_space(Space *space, const Parameters *params, const Time *time)
     size_t length;
 
     dR = params->h0;
-    limit = 1 + 6 * __builtin_sqrtf(time->dt * time->length);
+    limit = 1 + 6 * __builtin_sqrt(time->dt * time->length);
 
     HEAP_ALLOC_BEGIN(space->R);
 
