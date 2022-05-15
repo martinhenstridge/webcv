@@ -239,7 +239,7 @@ function redraw(timestamp) {
 }
 
 
-async function main() {
+window.onload = async function() {
     const params = document.getElementById("parameters");
     const submit = document.getElementById("submit-button");
     const cancel = document.getElementById("cancel-button");
@@ -259,6 +259,3 @@ async function main() {
 
     controls.enabled(true);
 }
-
-
-main();
